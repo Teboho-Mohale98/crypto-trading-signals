@@ -84,10 +84,13 @@ export interface DivergenceInfo {
 
 export interface TradeLevels {
   atr: number | null;
-  stop: number | null;
-  target: number | null;
+  entry: number | null;
+  stopLoss: number | null;
+  tp1: number | null;
+  tp2: number | null;
   riskPercent: number | null;
-  rewardPercent: number | null;
+  tp1Percent: number | null;
+  tp2Percent: number | null;
   riskReward: number | null;
 }
 

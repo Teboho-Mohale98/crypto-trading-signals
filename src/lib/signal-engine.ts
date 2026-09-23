@@ -7,6 +7,7 @@ import type {
   RuleResult,
   SignalAction,
   SignalSummary,
+  TradeLevels,
 } from "@/lib/types";
 
 export const RSI_PERIOD = 14;
@@ -18,6 +19,9 @@ export const MACD_SIGNAL_PERIOD = 9;
 export const BB_PERIOD = 20;
 export const BB_STDDEV = 2;
 export const STOCH_RSI_PERIOD = 14;
+export const ATR_STOP_MULTIPLIER = 1.5;
+export const ATR_TP1_MULTIPLIER = 1;
+export const ATR_TP2_MULTIPLIER = 2.5;
 export const ADX_PERIOD = 14;
 export const ATR_PERIOD = 14;
 
@@ -634,37 +638,52 @@ export function signalAt(
 export function computeTradeLevels(
   candles: Candle[],
   ind: ComputedIndicators,
-): {
-  atr: number | null;
-  stop: number | null;
-  target: number | null;
-  riskPercent: number | null;
-  rewardPercent: number | null;
-  riskReward: number | null;
-} {
+): TradeLevels {
   const i = candles.length - 1;
   const price = candles[i]?.c ?? null;
   const atr = lastValid(ind.atr);
 
-  if (price === null || atr === null || atr <= 0) {
-    return { atr: atr, stop: null, target: null, riskPercent: null, rewardPercent: null, riskReward: null };
+  const empty: TradeLevels = {
+    atr,
+    entry: null,
+    stopLoss: null,
+    tp1: null,
+    tp2: null,
+    riskPercent: null,
+    tp1Percent: null,
+    tp2Percent: null,
+    riskReward: null,
+  };
+
+  if (price === null || price <= 0 || atr === null || atr <= 0) {
+    return empty;
   }
 
   const signal = evaluateSignal(candles, ind);
-  const isShort = signal.action.includes("SELL");
+  const direction =
+    signal.action.includes("SELL") ? -1 :
+    signal.action.includes("BUY") ? 1 :
+    0;
 
-  const stopDist = 1.5 * atr;
-  const targetDist = 2.5 * atr;
-  const stop = isShort ? price + stopDist : price - stopDist;
-  const target = isShort ? price - targetDist : price + targetDist;
+  // NEUTRAL — no actionable entry, stop or targets.
+  if (direction === 0) {
+    return empty;
+  }
+
+  const stopDist = ATR_STOP_MULTIPLIER * atr;
+  const tp1Dist = ATR_TP1_MULTIPLIER * atr;
+  const tp2Dist = ATR_TP2_MULTIPLIER * atr;
 
   return {
     atr,
-    stop,
-    target,
+    entry: price,
+    stopLoss: price - direction * stopDist,
+    tp1: price + direction * tp1Dist,
+    tp2: price + direction * tp2Dist,
     riskPercent: (stopDist / price) * 100,
-    rewardPercent: (targetDist / price) * 100,
-    riskReward: targetDist / stopDist,
+    tp1Percent: (tp1Dist / price) * 100,
+    tp2Percent: (tp2Dist / price) * 100,
+    riskReward: tp2Dist / stopDist,
   };
 }
 

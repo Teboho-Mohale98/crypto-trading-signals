@@ -111,23 +111,32 @@ export function buildAnalysis(
 }
 
 function tradeLevelsOrEmpty(
-  levels: ReturnType<typeof computeTradeLevels>,
+  levels: TradeLevels,
 ): TradeLevels {
-  return levels.stop !== null && levels.target !== null
+  return levels.entry !== null &&
+    levels.stopLoss !== null &&
+    levels.tp1 !== null &&
+    levels.tp2 !== null
     ? {
         atr: levels.atr,
-        stop: levels.stop,
-        target: levels.target,
+        entry: levels.entry,
+        stopLoss: levels.stopLoss,
+        tp1: levels.tp1,
+        tp2: levels.tp2,
         riskPercent: levels.riskPercent,
-        rewardPercent: levels.rewardPercent,
+        tp1Percent: levels.tp1Percent,
+        tp2Percent: levels.tp2Percent,
         riskReward: levels.riskReward,
       }
     : {
         atr: levels.atr ?? null,
-        stop: null,
-        target: null,
+        entry: null,
+        stopLoss: null,
+        tp1: null,
+        tp2: null,
         riskPercent: null,
-        rewardPercent: null,
+        tp1Percent: null,
+        tp2Percent: null,
         riskReward: null,
       };
 }
