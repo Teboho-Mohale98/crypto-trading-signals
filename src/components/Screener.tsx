@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 
 import { formatCompact, formatPercent, formatPrice } from "@/lib/format";
 import { getSymbolConfig } from "@/lib/symbols";
-import type { SymbolSummary } from "@/lib/types";
+import type { Market, SymbolSummary } from "@/lib/types";
 
 import { SignalBadge } from "@/components/SignalBadge";
 
@@ -16,6 +16,12 @@ type SortKey =
   | "rsi"
   | "confidence"
   | "signal";
+
+const MARKET_BADGE: Record<Market, { label: string; className: string }> = {
+  crypto: { label: "Crypto", className: "bg-amber-500/15 text-amber-300 ring-amber-500/25" },
+  forex: { label: "Forex", className: "bg-cyan-500/15 text-cyan-300 ring-cyan-500/25" },
+  index: { label: "Index", className: "bg-violet-500/15 text-violet-300 ring-violet-500/25" },
+};
 
 export function Screener({
   results,
@@ -33,7 +39,7 @@ export function Screener({
   const rows = useMemo(() => {
     const filtered = results.filter((r) => {
       const cfg = getSymbolConfig(r.symbol);
-      const hay = `${r.symbol} ${cfg.label} ${cfg.description}`.toLowerCase();
+      const hay = `${r.symbol} ${cfg.label} ${cfg.description} ${cfg.market}`.toLowerCase();
       return hay.includes(query.trim().toLowerCase());
     });
 
@@ -112,6 +118,7 @@ export function Screener({
           <thead>
             <tr className="border-b border-slate-800">
               <th className="pb-2 pr-2 font-semibold">{th("symbol", "Pair")}</th>
+              <th className="pb-2 pr-2 text-left font-semibold">Market</th>
               <th className="pb-2 pr-2 font-semibold">{th("signal", "Signal")}</th>
               <th className="pb-2 pr-2 text-right font-semibold">{th("price", "Price")}</th>
               <th className="pb-2 pr-2 text-right font-semibold">{th("change24h", "24h %")}</th>
@@ -149,6 +156,15 @@ export function Screener({
                   <td className="py-2.5 pr-2">
                     <SignalBadge signal={r.signal.action} size="sm" />
                   </td>
+                  <td className="py-2.5 pr-2">
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${
+                        MARKET_BADGE[cfg.market].className
+                      }`}
+                    >
+                      {MARKET_BADGE[cfg.market].label}
+                    </span>
+                  </td>
                   <td className="py-2.5 pr-2 text-right font-semibold tabular-nums text-slate-200">
                     {formatPrice(r.market.price)}
                   </td>
@@ -173,7 +189,7 @@ export function Screener({
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-6 text-center text-slate-500">
+                <td colSpan={8} className="py-6 text-center text-slate-500">
                   No pairs match “{query}”.
                 </td>
               </tr>

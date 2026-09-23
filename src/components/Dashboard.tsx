@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { formatTime } from "@/lib/format";
-import { DEFAULT_INTERVAL, INTERVALS, SYMBOLS } from "@/lib/symbols";
-import type { Interval, SignalsResponse, SymbolAnalysis } from "@/lib/types";
+import { DEFAULT_INTERVAL, INTERVALS, INSTRUMENTS, MARKETS, getSymbolConfig } from "@/lib/symbols";
+import type { Interval, Market, SignalsResponse, SymbolAnalysis } from "@/lib/types";
 
 import { AnalysisPanel } from "@/components/AnalysisPanel";
 import { BacktestPanel } from "@/components/BacktestPanel";
@@ -46,10 +46,11 @@ export function Dashboard() {
   const [interval, setIntervalValue] = useState<Interval>(
     INTERVAL_SET.includes(urlInterval as Interval) ? (urlInterval as Interval) : DEFAULT_INTERVAL,
   );
+  const [activeMarket, setActiveMarket] = useState<Market | "all">("all");
   const [activeSymbol, setActiveSymbol] = useState<string>(
-    urlSymbol && SYMBOLS.some((s) => s.symbol === urlSymbol)
+    urlSymbol && INSTRUMENTS.some((s) => s.symbol === urlSymbol)
       ? urlSymbol
-      : SYMBOLS[0].symbol,
+      : INSTRUMENTS[0].symbol,
   );
 
   const [data, setData] = useState<SignalsResponse | null>(null);
@@ -169,9 +170,19 @@ export function Dashboard() {
   }, [load, loadAnalysis]);
 
   const featured = useMemo(
-    () => data?.results.filter((r) => SYMBOLS.find((s) => s.symbol === r.symbol)?.featured) ?? [],
-    [data],
+    () =>
+      data?.results.filter(
+        (r) =>
+          getSymbolConfig(r.symbol).featured &&
+          (activeMarket === "all" || getSymbolConfig(r.symbol).market === activeMarket),
+      ) ?? [],
+    [data, activeMarket],
   );
+
+  const chips = useMemo(() => {
+    if (activeMarket === "all") return INSTRUMENTS;
+    return INSTRUMENTS.filter((s) => s.market === activeMarket);
+  }, [activeMarket]);
 
   const active = useMemo(
     () => data?.results.find((r) => r.symbol === activeSymbol) ?? null,
@@ -203,10 +214,30 @@ export function Dashboard() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             <span className="mr-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              Market
+            </span>
+            <div className="flex rounded-xl border border-slate-800 bg-slate-900/70 p-1">
+              {(["all", ...MARKETS.map((m) => m.value)] as (Market | "all")[]).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setActiveMarket(m)}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all sm:text-sm ${
+                    activeMarket === m
+                      ? "bg-cyan-500/20 text-cyan-300"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  {m === "all" ? "All" : MARKETS.find((x) => x.value === m)?.label}
+                </button>
+              ))}
+            </div>
+
+            <span className="ml-2 mr-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
               Pair
             </span>
             <div className="flex flex-wrap rounded-xl border border-slate-800 bg-slate-900/70 p-1">
-              {SYMBOLS.map((s) => (
+              {chips.map((s) => (
                 <button
                   key={s.symbol}
                   type="button"
@@ -313,8 +344,8 @@ export function Dashboard() {
               <p className="font-semibold">Events in the data pipeline went sideways</p>
               <p className="mt-0.5 text-rose-300/80">
                 {error}. The dashboard retries automatically every {REFRESH_MS / 1000}
-                seconds. Binance public endpoints may be geo-blocked in some regions —
-                that is expected.
+                seconds. Public data endpoints may be geo-blocked or rate-limited in
+                some regions — that is expected.
               </p>
             </div>
           </div>
@@ -421,9 +452,10 @@ export function Dashboard() {
         )}
 
         <p className="pt-4 text-center text-xs text-slate-600">
-          Data: Binance public REST API (no API key needed). Indicators: RSI(14),
-          EMA(20/50), MACD(12,26,9), Bollinger(20,2σ), StochRSI(14), ADX(14),
-          ATR(14) via <code>technicalindicators</code>, chart rendering via{" "}
+          Data: Binance public REST API (crypto, no key) + Yahoo Finance
+          (forex & indices, no key). Indicators: RSI(14), EMA(20/50),
+          MACD(12,26,9), Bollinger(20,2σ), StochRSI(14), ADX(14), ATR(14) via{" "}
+          <code>technicalindicators</code>, chart rendering via{" "}
           <code>lightweight-charts</code>. Signals & backtest are algorithmic and
           informational only — not financial advice.
         </p>

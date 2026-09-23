@@ -85,11 +85,11 @@ export function SignalCard({ analysis, active, onSelect }: SignalCardProps) {
 
       <div className="mt-3 flex items-center justify-between text-[11px] text-slate-500">
         <span>
-          24h vol{" "}
+           24h vol{" "}
           <span className="tabular-nums text-slate-400">
             {formatCompact(analysis.market.quoteVolume24h)}
           </span>{" "}
-          USDT
+          {config.quote}
         </span>
         <span
           className={`text-xs font-bold uppercase tabular-nums ${

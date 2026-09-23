@@ -19,12 +19,14 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "SignalDesk — Elite Crypto Trading Signals",
+  title: "SignalDesk — Elite Crypto, Forex & Index Signals",
   description:
-    "Public, open-source crypto trading signal dashboard. Pro multi-pane chart, market screener, Fear & Greed sentiment and an elite signal engine (RSI, EMA, MACD, Bollinger, StochRSI, ADX, ATR) across 12 pairs. No login, no API keys.",
+    "Public, open-source trading signal dashboard for crypto, forex and global indices. Pro multi-pane chart, market screener, Fear & Greed sentiment and an elite signal engine (RSI, EMA, MACD, Bollinger, StochRSI, ADX, ATR) across 12 pairs, 20 forex pairs and 20 indices. No login, no API keys.",
   keywords: [
     "trading signals",
     "crypto signals",
+    "forex signals",
+    "index signals",
     "RSI",
     "MACD",
     "EMA",
@@ -32,9 +34,11 @@ export const metadata: Metadata = {
     "Stochastic RSI",
     "ADX",
     "BTC",
-    "Ethereum",
-    "Solana",
+    "EURUSD",
+    "S&P 500",
+    "Nasdaq",
     "Binance",
+    "Yahoo Finance",
     "open source",
     "market screener",
     "fear and greed",
@@ -51,9 +55,9 @@ export const metadata: Metadata = {
     title: "SignalDesk",
   },
   openGraph: {
-    title: "SignalDesk — Elite Crypto Trading Signals",
+    title: "SignalDesk — Elite Crypto, Forex & Index Signals",
     description:
-      "Pro multi-pane chart, marker screener, Fear & Greed sentiment and a 7-indicator signal engine across 12 pairs. No login, no API keys.",
+      "Pro multi-pane chart, market screener, Fear & Greed sentiment and a 7-indicator signal engine across 12 crypto pairs, 20 forex pairs and 20 global indices. No login, no API keys.",
     type: "website",
   },
 };

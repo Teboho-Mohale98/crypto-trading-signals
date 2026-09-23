@@ -1,39 +1,36 @@
 import { NextResponse } from "next/server";
 
 import { buildAnalysis } from "@/lib/analysis";
-import { BinanceDataError, fetch24hrTicker, fetchKlines } from "@/lib/binance";
+import { fetchInstrumentData, isProviderError } from "@/lib/markets";
 import { getSymbolConfig, isValidSymbol } from "@/lib/symbols";
 import type { Interval } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+const VALID_INTERVALS: Interval[] = ["15m", "30m", "1h", "4h", "1d"];
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const symbolParam = searchParams.get("symbol") ?? "";
   const intervalParam = searchParams.get("interval");
 
-  const interval: Interval = (["15m", "30m", "1h", "4h", "1d"] as const).includes(
-    intervalParam as Interval,
-  )
+  const interval: Interval = VALID_INTERVALS.includes(intervalParam as Interval)
     ? (intervalParam as Interval)
     : "1h";
 
-  if (!isValidSymbol(symbolParam)) {
+  const symbol = symbolParam.toUpperCase();
+  if (!isValidSymbol(symbol)) {
     return NextResponse.json(
-      { error: "Invalid or missing symbol. Expected something like BTCUSDT." },
+      { error: "Invalid or missing symbol. Expected something like BTCUSDT, EURUSD=X or ^GSPC." },
       { status: 400 },
     );
   }
 
-  const symbol = symbolParam.toUpperCase();
-  getSymbolConfig(symbol);
+  const config = getSymbolConfig(symbol);
 
   try {
-    const [{ candles, host }, market] = await Promise.all([
-      fetchKlines(symbol, interval),
-      fetch24hrTicker(symbol),
-    ]);
+    const { candles, market, source } = await fetchInstrumentData(config, interval);
 
     if (candles.length < 100) {
       return NextResponse.json(
@@ -42,12 +39,12 @@ export async function GET(request: Request) {
       );
     }
 
-    const analysis = buildAnalysis(symbol, interval, candles, host, market);
+    const analysis = buildAnalysis(symbol, interval, candles, source, market);
     return NextResponse.json(analysis);
   } catch (err) {
-    if (err instanceof BinanceDataError) {
+    if (isProviderError(err)) {
       return NextResponse.json(
-        { error: err.message },
+        { error: err instanceof Error ? err.message : String(err) },
         { status: 502 },
       );
     }

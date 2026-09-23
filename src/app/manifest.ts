@@ -2,10 +2,10 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "SignalDesk — Elite Crypto Trading Signals",
+    name: "SignalDesk — Elite Crypto, Forex & Index Signals",
     short_name: "SignalDesk",
     description:
-      "Public, open-source crypto trading signal dashboard with a pro multi-pane chart, market screener, sentiment gauge and elite signal engine. No login required.",
+      "Public, open-source trading signal dashboard for crypto, forex and global indices with a pro multi-pane chart, market screener, sentiment gauge and elite signal engine. No login required.",
     start_url: "/",
     display: "standalone",
     background_color: "#020617",

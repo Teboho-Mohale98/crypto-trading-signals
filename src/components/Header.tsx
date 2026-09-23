@@ -30,7 +30,7 @@ export function Header({ activeSymbol, dataSource }: HeaderProps) {
               SignalDesk
             </h1>
             <p className="hidden text-xs text-slate-400 sm:block">
-              Public real-time crypto trading signals
+              Public real-time crypto, forex &amp; index signals
             </p>
           </div>
         </div>

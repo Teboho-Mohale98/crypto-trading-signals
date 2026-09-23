@@ -11,12 +11,12 @@ export function OverviewStrip({ aggregates }: { aggregates: OverviewAggregate })
     tone?: string;
   }[] = [
     {
-      label: "Tracked pairs",
+      label: "Tracked instruments",
       value: String(aggregates.trackedSymbols),
     },
     {
       label: "24h volume (Σ)",
-      value: `${formatCompact(aggregates.totalQuoteVolume24h)} USDT`,
+      value: `${formatCompact(aggregates.totalQuoteVolume24h)}`,
     },
     {
       label: "Avg 24h move",

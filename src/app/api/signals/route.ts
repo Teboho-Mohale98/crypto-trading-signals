@@ -1,33 +1,38 @@
 import { NextResponse } from "next/server";
 
 import { buildSummary } from "@/lib/analysis";
-import { fetch24hrTicker, fetchKlines } from "@/lib/binance";
-import { SYMBOLS } from "@/lib/symbols";
-import type { Interval, OverviewAggregate, SignalsResponse } from "@/lib/types";
+import { fetchInstrumentData } from "@/lib/markets";
+import { instrumentsByMarket } from "@/lib/symbols";
+import type { Interval, Market, OverviewAggregate, SignalsResponse } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+const VALID_INTERVALS: Interval[] = ["15m", "30m", "1h", "4h", "1d"];
+const VALID_MARKETS: (Market | "all")[] = ["all", "crypto", "forex", "index"];
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const intervalParam = searchParams.get("interval");
-  const interval: Interval = (["15m", "30m", "1h", "4h", "1d"] as const).includes(
-    intervalParam as Interval,
-  )
+  const marketParam = searchParams.get("market");
+
+  const interval: Interval = VALID_INTERVALS.includes(intervalParam as Interval)
     ? (intervalParam as Interval)
     : "1h";
+  const market: Market | "all" = VALID_MARKETS.includes(marketParam as Market | "all")
+    ? (marketParam as Market | "all")
+    : "all";
+
+  const instruments = instrumentsByMarket(market);
 
   const results = await Promise.all(
-    SYMBOLS.map(async (cfg) => {
+    instruments.map(async (cfg) => {
       try {
-        const [{ candles, host }, market] = await Promise.all([
-          fetchKlines(cfg.symbol, interval),
-          fetch24hrTicker(cfg.symbol),
-        ]);
+        const { candles, market: stats, source } = await fetchInstrumentData(cfg, interval);
         if (candles.length < 100) {
           return { kind: "error" as const, error: { symbol: cfg.symbol, message: `Not enough candle history (${candles.length})` } };
         }
-        return { kind: "ok" as const, summary: buildSummary(cfg.symbol, interval, candles, host, market) };
+        return { kind: "ok" as const, summary: buildSummary(cfg.symbol, interval, candles, source, stats) };
       } catch (err) {
         return {
           kind: "error" as const,

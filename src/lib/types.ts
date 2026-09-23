@@ -1,5 +1,7 @@
 export type SignalAction = "STRONG_BUY" | "BUY" | "NEUTRAL" | "SELL" | "STRONG_SELL";
 
+export type Market = "crypto" | "forex" | "index";
+
 export type Interval = "15m" | "30m" | "1h" | "4h" | "1d";
 
 export interface Candle {
@@ -18,6 +20,7 @@ export interface SymbolConfig {
   label: string;
   accent: string;
   description: string;
+  market: Market;
   featured?: boolean;
 }
 
