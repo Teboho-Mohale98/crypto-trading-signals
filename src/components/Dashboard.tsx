@@ -1,20 +1,26 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { formatTime } from "@/lib/format";
 import { DEFAULT_INTERVAL, INTERVALS, SYMBOLS } from "@/lib/symbols";
-import type { Interval, SignalsResponse } from "@/lib/types";
+import type { Interval, SignalsResponse, SymbolAnalysis } from "@/lib/types";
 
 import { AnalysisPanel } from "@/components/AnalysisPanel";
-import { CandleChart } from "@/components/CandleChart";
+import { BacktestPanel } from "@/components/BacktestPanel";
 import { Header } from "@/components/Header";
-import { MacdPanel, RsiPanel } from "@/components/IndicatorCharts";
-import { SignalBadge } from "@/components/SignalBadge";
+import { OverviewStrip } from "@/components/OverviewStrip";
+import { ProChart } from "@/components/ProChart";
+import { Screener } from "@/components/Screener";
+import { SentimentGauge } from "@/components/SentimentGauge";
+import { ShareBar } from "@/components/ShareBar";
 import { SignalCard } from "@/components/SignalCard";
+import { TradeLevels } from "@/components/TradeLevels";
 
 const REFRESH_MS = 12000;
-const SYMBOL_LIST = SYMBOLS.map((s) => s.symbol).join(",");
+
+const INTERVAL_SET: Interval[] = INTERVALS.map((i) => i.value);
 
 function SkeletonCard() {
   return (
@@ -31,51 +37,123 @@ function SkeletonCard() {
 }
 
 export function Dashboard() {
-  const [interval, setIntervalValue] = useState<Interval>(DEFAULT_INTERVAL);
-  const [activeSymbol, setActiveSymbol] = useState<string>(SYMBOLS[0].symbol);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const urlSymbol = searchParams.get("symbol");
+  const urlInterval = searchParams.get("interval");
+
+  const [interval, setIntervalValue] = useState<Interval>(
+    INTERVAL_SET.includes(urlInterval as Interval) ? (urlInterval as Interval) : DEFAULT_INTERVAL,
+  );
+  const [activeSymbol, setActiveSymbol] = useState<string>(
+    urlSymbol && SYMBOLS.some((s) => s.symbol === urlSymbol)
+      ? urlSymbol
+      : SYMBOLS[0].symbol,
+  );
+
   const [data, setData] = useState<SignalsResponse | null>(null);
+  const [analysis, setAnalysis] = useState<SymbolAnalysis | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [isPending, startTransition] = useTransition();
+  const [isAnalysisPending, startAnalysisTransition] = useTransition();
+  const [analysisKey, setAnalysisKey] = useState(`${activeSymbol}|${interval}`);
 
   const reqSeq = useRef(0);
+  const analysisSeq = useRef(0);
+
+  const pushUrlState = useCallback(
+    (symbol: string, ivl: Interval) => {
+      const params = new URLSearchParams();
+      params.set("symbol", symbol);
+      params.set("interval", ivl);
+      router.replace(`?${params.toString()}`, { scroll: false });
+    },
+    [router],
+  );
+
+  const selectSymbol = useCallback(
+    (symbol: string, ivl: string) => {
+      const nextInterval = (INTERVAL_SET as string[]).includes(ivl)
+        ? (ivl as Interval)
+        : interval;
+      setActiveSymbol(symbol);
+      if (nextInterval !== interval) setIntervalValue(nextInterval);
+      pushUrlState(symbol, nextInterval);
+      setAnalysisKey(`${symbol}|${nextInterval}`);
+    },
+    [interval, pushUrlState],
+  );
+
+  const selectInterval = useCallback(
+    (ivl: Interval) => {
+      setIntervalValue(ivl);
+      pushUrlState(activeSymbol, ivl);
+      setAnalysisKey(`${activeSymbol}|${ivl}`);
+    },
+    [activeSymbol, pushUrlState],
+  );
 
   const load = useCallback(() => {
-      startTransition(async () => {
-        const seq = ++reqSeq.current;
-        try {
-          const res = await fetch(
-            `/api/signals?symbols=${SYMBOL_LIST}&interval=${interval}`,
-            { cache: "no-store" },
-          );
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const json = (await res.json()) as SignalsResponse;
-          if (seq !== reqSeq.current) return;
-          setData(json);
-          setLastUpdated(Date.now());
-          setActiveSymbol((prev) =>
-            json.results.some((r) => r.symbol === prev)
-              ? prev
-              : json.results[0]?.symbol ?? prev,
-          );
-          if (json.errors.length > 0 && json.results.length === 0) {
-            setError(json.errors[0]?.message ?? "No data returned");
-          }
-        } catch (err) {
-          if (seq !== reqSeq.current) return;
-          setError(
-            err instanceof Error ? err.message : "Failed to load market data",
+    startTransition(async () => {
+      const seq = ++reqSeq.current;
+      try {
+        const res = await fetch(`/api/signals?interval=${interval}`, { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = (await res.json()) as SignalsResponse;
+        if (seq !== reqSeq.current) return;
+        setData(json);
+        setLastUpdated(Date.now());
+        if (json.errors.length > 0 && json.results.length === 0) {
+          setError(json.errors[0]?.message ?? "No data returned");
+        }
+      } catch (err) {
+        if (seq !== reqSeq.current) return;
+        setError(err instanceof Error ? err.message : "Failed to load market data");
+      }
+    });
+  }, [interval]);
+
+  const loadAnalysis = useCallback(() => {
+    const [sym, ivl] = analysisKey.split("|");
+    startAnalysisTransition(async () => {
+      const seq = ++analysisSeq.current;
+      try {
+        const res = await fetch(`/api/analysis?symbol=${sym}&interval=${ivl}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          throw new Error(
+            body?.error ??
+              (res.status === 404
+                ? `Pair ${sym} not found on this timeframe`
+                : `HTTP ${res.status}`),
           );
         }
-      });
-    },
-    [interval],
-  );
+        setAnalysisError(null);
+        const json = (await res.json()) as SymbolAnalysis;
+        if (seq !== analysisSeq.current) return;
+        setAnalysis(json);
+      } catch (err) {
+        if (seq !== analysisSeq.current) return;
+        setAnalysisError(
+          err instanceof Error ? err.message : "Failed to load detailed analysis",
+        );
+      }
+    });
+  }, [analysisKey]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    loadAnalysis();
+  }, [loadAnalysis]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -85,9 +163,15 @@ export function Dashboard() {
   useEffect(() => {
     const id = setInterval(() => {
       load();
+      loadAnalysis();
     }, REFRESH_MS);
     return () => clearInterval(id);
-  }, [load]);
+  }, [load, loadAnalysis]);
+
+  const featured = useMemo(
+    () => data?.results.filter((r) => SYMBOLS.find((s) => s.symbol === r.symbol)?.featured) ?? [],
+    [data],
+  );
 
   const active = useMemo(
     () => data?.results.find((r) => r.symbol === activeSymbol) ?? null,
@@ -114,20 +198,20 @@ export function Dashboard() {
         }}
       />
 
-      <main className="relative z-10 mx-auto w-full max-w-7xl flex-1 px-4 pb-16 pt-6 sm:px-6">
+      <main className="relative z-10 mx-auto w-full max-w-7xl flex-1 space-y-4 px-4 pb-16 pt-6 sm:px-6">
         {/* Controls */}
-        <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             <span className="mr-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
               Pair
             </span>
-            <div className="flex rounded-xl border border-slate-800 bg-slate-900/70 p-1">
+            <div className="flex flex-wrap rounded-xl border border-slate-800 bg-slate-900/70 p-1">
               {SYMBOLS.map((s) => (
                 <button
                   key={s.symbol}
                   type="button"
-                  onClick={() => setActiveSymbol(s.symbol)}
-                  className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-all ${
+                  onClick={() => selectSymbol(s.symbol, interval)}
+                  className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all sm:text-sm ${
                     activeSymbol === s.symbol
                       ? "bg-slate-700/80 text-white shadow-sm"
                       : "text-slate-400 hover:text-slate-200"
@@ -146,7 +230,7 @@ export function Dashboard() {
                 <button
                   key={it.value}
                   type="button"
-                  onClick={() => setIntervalValue(it.value)}
+                  onClick={() => selectInterval(it.value)}
                   className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-all ${
                     interval === it.value
                       ? "bg-emerald-500/20 text-emerald-300"
@@ -159,8 +243,10 @@ export function Dashboard() {
             </div>
           </div>
 
-          {/* Refresh status */}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <ShareBar analysis={analysis} />
+            </div>
             {lastUpdated && (
               <div className="flex items-center gap-2 text-xs text-slate-500">
                 <span
@@ -169,14 +255,15 @@ export function Dashboard() {
                   }`}
                 />
                 Updated {formatTime(lastUpdated)}
-                <span className="text-slate-600">
-                  · refresh in {countdown}s
-                </span>
+                <span className="text-slate-600">· {countdown}s</span>
               </div>
             )}
             <button
               type="button"
-              onClick={() => load()}
+              onClick={() => {
+                load();
+                loadAnalysis();
+              }}
               disabled={isPending}
               className="inline-flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-slate-600 hover:text-white disabled:opacity-60"
             >
@@ -199,7 +286,7 @@ export function Dashboard() {
 
         {/* Refresh progress */}
         {lastUpdated && (
-          <div className="mb-5 h-0.5 w-full overflow-hidden rounded-full bg-slate-800/60">
+          <div className="h-0.5 w-full overflow-hidden rounded-full bg-slate-800/60">
             <div
               className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-400 transition-[width] duration-1000 ease-linear"
               style={{ width: `${progress}%` }}
@@ -209,7 +296,7 @@ export function Dashboard() {
 
         {/* Error banner */}
         {error && (
-          <div className="mb-5 flex items-start gap-3 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-300">
+          <div className="flex items-start gap-3 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-300">
             <svg
               className="mt-0.5 h-5 w-5 shrink-0"
               viewBox="0 0 24 24"
@@ -225,15 +312,18 @@ export function Dashboard() {
             <div>
               <p className="font-semibold">Events in the data pipeline went sideways</p>
               <p className="mt-0.5 text-rose-300/80">
-                {error}. The dashboard retries automatically every{" "}
-                {REFRESH_MS / 1000} seconds. Binance public endpoints may be
-                geo-blocked in some regions — that is expected.
+                {error}. The dashboard retries automatically every {REFRESH_MS / 1000}
+                seconds. Binance public endpoints may be geo-blocked in some regions —
+                that is expected.
               </p>
             </div>
           </div>
         )}
 
-        {/* Signal cards */}
+        {/* Overview */}
+        {data?.aggregates && <OverviewStrip aggregates={data.aggregates} />}
+
+        {/* Featured cards */}
         {isPending && !data ? (
           <div className="grid gap-4 md:grid-cols-3">
             <SkeletonCard />
@@ -242,19 +332,86 @@ export function Dashboard() {
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-3">
-            {data?.results.map((a) => (
+            {featured.map((a) => (
               <SignalCard
                 key={a.symbol}
                 analysis={a}
                 active={a.symbol === activeSymbol}
-                onSelect={setActiveSymbol}
+                onSelect={selectSymbol}
               />
             ))}
           </div>
         )}
 
+        {/* Screener + sentiment */}
+        {data && (
+          <div className="grid gap-4 lg:grid-cols-3">
+            <div className="lg:col-span-2">
+              <Screener
+                results={data.results}
+                activeSymbol={activeSymbol}
+                onSelect={selectSymbol}
+              />
+            </div>
+            <SentimentGauge />
+          </div>
+        )}
+
+        {/* Detail */}
+        <div className="grid gap-4 lg:grid-cols-3">
+          <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/60 p-4 lg:col-span-2">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <h2 className="text-sm font-bold text-slate-100">{activeSymbol}</h2>
+                <span className="text-xs text-slate-500">
+                  {interval} · TradingView-style panes
+                </span>
+              </div>
+              {active && <span className="text-xs text-slate-600">{active.dataSource}</span>}
+            </div>
+            {analysis && !analysisError ? (
+              <ProChart
+                symbol={analysis.symbol}
+                interval={analysis.interval}
+                candles={analysis.candles}
+                series={analysis.series}
+                height={430}
+              />
+            ) : (
+              <div className="flex h-96 items-center justify-center text-sm text-slate-500">
+                {isAnalysisPending
+                  ? "Loading chart…"
+                  : analysisError ?? "Select a pair to load the chart"}
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+            <h2 className="mb-3 text-sm font-bold text-slate-100">
+              Technical analysis
+            </h2>
+            {analysis && !analysisError ? (
+              <AnalysisPanel analysis={analysis} interval={interval} />
+            ) : (
+              <div className="flex h-64 items-center justify-center text-center text-sm text-slate-500">
+                {isAnalysisPending
+                  ? "Loading analysis…"
+                  : analysisError ?? "Select a pair"}
+              </div>
+            )}
+          </section>
+        </div>
+
+        {/* Levels + backtest */}
+        {analysis && !analysisError && (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <TradeLevels levels={analysis.tradeLevels} />
+            <BacktestPanel backtest={analysis.backtest} />
+          </div>
+        )}
+
         {data?.errors && data.errors.length > 0 && (
-          <div className="mt-4 text-xs text-slate-500">
+          <div className="text-xs text-slate-600">
             {data.errors.map((e) => (
               <p key={e.symbol}>
                 {e.symbol}: {e.message}
@@ -263,112 +420,12 @@ export function Dashboard() {
           </div>
         )}
 
-        {/* Main detail grid */}
-        <div className="mt-6 grid gap-4 lg:grid-cols-3">
-          {/* Chart */}
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 lg:col-span-2">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <h2 className="text-sm font-bold text-slate-100">
-                  {active?.symbol ?? SYMBOLS[0].symbol}
-                </h2>
-                <span className="text-xs text-slate-500">
-                  {interval} candlesticks · EMA 20/50 overlay
-                </span>
-              </div>
-              {active && <SignalBadge signal={active.signal.action} size="md" />}
-            </div>
-            {active ? (
-              <CandleChart
-                candles={active.candles}
-                ema20={active.series.ema20}
-                ema50={active.series.ema50}
-                interval={interval}
-                accent={active.signal.action === "SELL" ? "#fb7185" : "#34d399"}
-                height={360}
-              />
-            ) : (
-              <div className="flex h-80 items-center justify-center text-sm text-slate-500">
-                {isPending ? "Loading chart…" : "Select a pair"}
-              </div>
-            )}
-            <div className="mt-3 flex items-center gap-4 text-[11px] text-slate-500">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-0.5 w-4 border-t-2 border-dashed border-sky-400" />
-                EMA 20
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-0.5 w-4 border-t-2 border-amber-500" />
-                EMA 50
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-sm bg-emerald-400" />
-                Bullish candle
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-sm bg-rose-400" />
-                Bearish candle
-              </span>
-            </div>
-          </section>
-
-          {/* Analysis */}
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-            <h2 className="mb-3 text-sm font-bold text-slate-100">
-              Technical analysis
-            </h2>
-            {active ? (
-              <AnalysisPanel analysis={active} interval={interval} />
-            ) : (
-              <div className="flex h-64 items-center justify-center text-sm text-slate-500">
-                Loading analysis…
-              </div>
-            )}
-          </section>
-        </div>
-
-        {/* Indicator panes */}
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-              RSI history
-            </h3>
-            {active ? (
-              <RsiPanel
-                candles={active.candles}
-                values={active.series.rsi}
-                interval={interval}
-              />
-            ) : (
-              <div className="flex h-32 items-center justify-center text-sm text-slate-500">
-                Loading…
-              </div>
-            )}
-          </section>
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-              MACD momentum
-            </h3>
-            {active ? (
-              <MacdPanel
-                candles={active.candles}
-                macd={active.series.macd}
-                macdSignal={active.series.macdSignal}
-                hist={active.series.macdHistogram}
-                interval={interval}
-              />
-            ) : (
-              <div className="flex h-32 items-center justify-center text-sm text-slate-500">
-                Loading…
-              </div>
-            )}
-          </section>
-        </div>
-
-        <p className="mt-6 text-center text-xs text-slate-600">
-          Data: Binance public REST API · Indicators: RSI(14), EMA(20/50),
-          MACD(12,26,9) via <code>technicalindicators</code> · Signals are
-          algorithmic and informational only — not financial advice.
+        <p className="pt-4 text-center text-xs text-slate-600">
+          Data: Binance public REST API (no API key needed). Indicators: RSI(14),
+          EMA(20/50), MACD(12,26,9), Bollinger(20,2σ), StochRSI(14), ADX(14),
+          ATR(14) via <code>technicalindicators</code>, chart rendering via{" "}
+          <code>lightweight-charts</code>. Signals & backtest are algorithmic and
+          informational only — not financial advice.
         </p>
       </main>
     </div>

@@ -1,15 +1,19 @@
 import type { SignalAction } from "@/lib/types";
 
 const STYLES: Record<SignalAction, string> = {
+  STRONG_BUY: "border-emerald-400/60 bg-emerald-500/25 text-emerald-300 shadow-sm shadow-emerald-500/20",
   BUY: "border-emerald-500/40 bg-emerald-500/15 text-emerald-400",
-  SELL: "border-rose-500/40 bg-rose-500/15 text-rose-400",
   NEUTRAL: "border-slate-600/60 bg-slate-700/25 text-slate-300",
+  SELL: "border-rose-500/40 bg-rose-500/15 text-rose-400",
+  STRONG_SELL: "border-rose-400/60 bg-rose-500/25 text-rose-300 shadow-sm shadow-rose-500/20",
 };
 
 const TONES: Record<SignalAction, string> = {
+  STRONG_BUY: "#10b981",
   BUY: "#34d399",
-  SELL: "#fb7185",
   NEUTRAL: "#94a3b8",
+  SELL: "#fb7185",
+  STRONG_SELL: "#f43f5e",
 };
 
 export interface SignalBadgeProps {

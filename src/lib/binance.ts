@@ -1,3 +1,4 @@
+import { cached } from "@/lib/cache";
 import type { Candle, Interval, MarketStats } from "@/lib/types";
 
 const BINANCE_HOSTS = [
@@ -10,22 +11,24 @@ const BINANCE_HOSTS = [
 
 export const CANDLE_LIMIT = 200;
 
+// Short in-process TTL cache: every dashboard query is served from memory for a
+// few seconds so consecutive polls don't hammer Binance (works on Vercel's
+// serverless model where an instance can serve several overlapping requests).
+const KLINE_TTL_MS = 8_000;
+const TICKER_TTL_MS = 8_000;
+
 export class BinanceDataError extends Error {}
 
 async function fetchJsonWithFallback(
   path: string,
-  init?: RequestInit,
 ): Promise<{ data: unknown; host: string }> {
   let lastError: unknown;
 
   for (const host of BINANCE_HOSTS) {
     try {
       const res = await fetch(`${host}${path}`, {
-        ...init,
-        headers: {
-          Accept: "application/json",
-          ...(init?.headers ?? {}),
-        },
+        cache: "no-store",
+        headers: { Accept: "application/json" },
       });
 
       if (res.ok) {
@@ -65,52 +68,55 @@ export async function fetchKlines(
   interval: Interval,
   limit = CANDLE_LIMIT,
 ): Promise<{ candles: Candle[]; host: string }> {
-  const { data, host } = await fetchJsonWithFallback(
-    `/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`,
-    { cache: "no-store" },
+  const path = `/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+
+  return cached(
+    `kline:${path}`,
+    KLINE_TTL_MS,
+    async () => {
+      const { data, host } = await fetchJsonWithFallback(path);
+      if (!Array.isArray(data)) {
+        throw new BinanceDataError(`Unexpected klines payload for ${symbol}`);
+      }
+      const candles = (data as RawKline[]).map((k) => ({
+        t: k[0],
+        o: Number(k[1]),
+        h: Number(k[2]),
+        l: Number(k[3]),
+        c: Number(k[4]),
+        v: Number(k[5]),
+      }));
+      return { candles, host };
+    },
   );
-
-  if (!Array.isArray(data)) {
-    throw new BinanceDataError(`Unexpected klines payload for ${symbol}`);
-  }
-
-  const candles = (data as RawKline[]).map((k) => ({
-    t: k[0],
-    o: Number(k[1]),
-    h: Number(k[2]),
-    l: Number(k[3]),
-    c: Number(k[4]),
-    v: Number(k[5]),
-  }));
-
-  return { candles, host };
 }
 
-export async function fetch24hrTicker(
-  symbol: string,
-): Promise<MarketStats> {
-  const { data } = await fetchJsonWithFallback(
-    `/api/v3/ticker/24hr?symbol=${symbol}`,
-    { cache: "no-store" },
+export async function fetch24hrTicker(symbol: string): Promise<MarketStats> {
+  const path = `/api/v3/ticker/24hr?symbol=${symbol}`;
+
+  return cached(
+    `ticker:${path}`,
+    TICKER_TTL_MS,
+    async () => {
+      const { data } = await fetchJsonWithFallback(path);
+      const t = data as {
+        lastPrice: string;
+        priceChange: string;
+        priceChangePercent: string;
+        highPrice: string;
+        lowPrice: string;
+        volume: string;
+        quoteVolume: string;
+      };
+      return {
+        price: Number(t.lastPrice),
+        change24h: Number(t.priceChange),
+        changePercent24h: Number(t.priceChangePercent),
+        high24h: Number(t.highPrice),
+        low24h: Number(t.lowPrice),
+        volume24h: Number(t.volume),
+        quoteVolume24h: Number(t.quoteVolume),
+      };
+    },
   );
-
-  const t = data as {
-    lastPrice: string;
-    priceChange: string;
-    priceChangePercent: string;
-    highPrice: string;
-    lowPrice: string;
-    volume: string;
-    quoteVolume: string;
-  };
-
-  return {
-    price: Number(t.lastPrice),
-    change24h: Number(t.priceChange),
-    changePercent24h: Number(t.priceChangePercent),
-    high24h: Number(t.highPrice),
-    low24h: Number(t.lowPrice),
-    volume24h: Number(t.volume),
-    quoteVolume24h: Number(t.quoteVolume),
-  };
 }

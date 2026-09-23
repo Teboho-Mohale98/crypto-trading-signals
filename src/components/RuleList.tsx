@@ -3,10 +3,14 @@ import type { RuleResult } from "@/lib/types";
 import { SignalBadge } from "@/components/SignalBadge";
 
 const ICON: Record<RuleResult["indicator"], string> = {
-  RSI: "𝞅",
-  EMA: "~",
-  MACD: "σ",
-  TREND: "∫",
+  RSI: "RSI",
+  EMA: "EMA",
+  MACD: "MACD",
+  TREND: "TRD",
+  BOLLINGER: "BB",
+  STOCH_RSI: "SRSI",
+  DIVERGENCE: "DIV",
+  ADX: "ADX",
 };
 
 export function RuleList({ rules }: { rules: RuleResult[] }) {

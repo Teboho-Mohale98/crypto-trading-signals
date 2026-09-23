@@ -25,6 +25,19 @@ export function rsiZone(rsi: number | null): {
   return { label: "Neutral", tone: "text-slate-400", color: "#94a3b8" };
 }
 
+function adxTone(adx: number | null, pdi: number | null, mdi: number | null): {
+  label: string;
+  tone: string;
+} {
+  if (adx === null) return { label: "—", tone: "text-slate-500" };
+  if (adx >= 25 && pdi !== null && mdi !== null)
+    return pdi > mdi
+      ? { label: "Strong uptrend", tone: "text-emerald-400" }
+      : { label: "Strong downtrend", tone: "text-rose-400" };
+  if (adx < 20) return { label: "No trend / ranging", tone: "text-slate-500" };
+  return { label: "Trend strengthening", tone: "text-amber-400" };
+}
+
 export function AnalysisPanel({
   analysis,
   interval,
@@ -40,6 +53,7 @@ export function AnalysisPanel({
     ind.macdHistogramPrev !== null &&
     ind.macdHistogram > ind.macdHistogramPrev;
   const rsi = rsiZone(ind.rsi);
+  const adx = adxTone(ind.adx, ind.pdi, ind.mdi);
 
   const emaBull = ind.ema20 !== null && ind.ema50 !== null && ind.ema20 > ind.ema50;
 
@@ -49,6 +63,28 @@ export function AnalysisPanel({
       value: ind.rsi !== null ? ind.rsi.toFixed(1) : "—",
       sub: rsi.label,
       tone: rsi.tone,
+    },
+    {
+      label: "Stoch RSI",
+      value: ind.stochRsi !== null ? ind.stochRsi.toFixed(2) : "—",
+      sub:
+        ind.stochRsi !== null
+          ? ind.stochRsi <= 0.2
+            ? "Oversold"
+            : ind.stochRsi >= 0.8
+              ? "Overbought"
+              : ind.stochRsi < 0.5
+                ? "Momentum low"
+                : "Momentum high"
+          : "—",
+      tone:
+        ind.stochRsi !== null
+          ? ind.stochRsi <= 0.2
+            ? "text-emerald-400"
+            : ind.stochRsi >= 0.8
+              ? "text-rose-400"
+              : "text-slate-400"
+          : "text-slate-500",
     },
     {
       label: "MACD Histogram",
@@ -81,15 +117,45 @@ export function AnalysisPanel({
         : "—",
       tone: emaBull ? "text-emerald-400" : "text-rose-400",
     },
+    {
+      label: "ADX (14)",
+      value: ind.adx !== null ? ind.adx.toFixed(1) : "—",
+      sub: adx.label,
+      tone: adx.tone,
+    },
+    {
+      label: "Bollinger",
+      value:
+        ind.bbUpper !== null && ind.bbLower !== null && ind.bbMiddle !== null
+          ? `±${(((ind.bbUpper - ind.bbLower) / 2 / ind.bbMiddle) * 100).toFixed(2)}%`
+          : "—",
+      sub: ind.bbUpper !== null && ind.bbLower !== null && ind.bbMiddle !== null
+        ? ((ind.bbUpper - ind.bbLower) / ind.bbMiddle) * 100 < 4
+          ? "Squeeze"
+          : "In range"
+        : "—",
+    },
   ];
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
         <div>
-          <p className="text-xs uppercase tracking-wider text-slate-500">
-            Active signal
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-xs uppercase tracking-wider text-slate-500">
+              Active signal
+            </p>
+            {signal.tier === "STRONG" && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-amber-300"
+              >
+                <svg className="h-2.5 w-2.5" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z" />
+                </svg>
+                Strong
+              </span>
+            )}
+          </div>
           <div className="mt-1 flex items-center gap-3">
             <SignalBadge signal={signal.action} size="lg" />
             <div>
@@ -154,6 +220,31 @@ export function AnalysisPanel({
           </div>
         ))}
       </div>
+
+      {analysis.divergence.rsi && (
+        <div
+          className={`rounded-xl border p-3 ${
+            analysis.divergence.rsi === "bullish"
+              ? "border-emerald-500/30 bg-emerald-500/10"
+              : "border-rose-500/30 bg-rose-500/10"
+          }`}
+        >
+          <p
+            className={`text-[10px] font-bold uppercase tracking-widest ${
+              analysis.divergence.rsi === "bullish"
+                ? "text-emerald-400"
+                : "text-rose-400"
+            }`}
+          >
+            {analysis.divergence.rsi === "bullish"
+              ? "Bullish divergence"
+              : "Bearish divergence"}
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-slate-300">
+            {analysis.divergence.note}
+          </p>
+        </div>
+      )}
 
       <div>
         <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
