@@ -22,7 +22,9 @@ export const BB_STDDEV = 2;
 export const STOCH_RSI_PERIOD = 14;
 export const ATR_STOP_MULTIPLIER = 1.5;
 export const ATR_TP1_MULTIPLIER = 1;
-export const ATR_TP2_MULTIPLIER = 2.5;
+export const ATR_TP2_MULTIPLIER = 2;
+export const ATR_TP3_MULTIPLIER = 3;
+export const ATR_TP4_MULTIPLIER = 4.5;
 
 export const STRATEGY_ORDER: StrategyId[] = [
   "trend",
@@ -660,9 +662,13 @@ export function computeTradeLevels(
     stopLoss: null,
     tp1: null,
     tp2: null,
+    tp3: null,
+    tp4: null,
     riskPercent: null,
     tp1Percent: null,
     tp2Percent: null,
+    tp3Percent: null,
+    tp4Percent: null,
     riskReward: null,
   };
 
@@ -684,6 +690,8 @@ export function computeTradeLevels(
   const stopDist = ATR_STOP_MULTIPLIER * atr;
   const tp1Dist = ATR_TP1_MULTIPLIER * atr;
   const tp2Dist = ATR_TP2_MULTIPLIER * atr;
+  const tp3Dist = ATR_TP3_MULTIPLIER * atr;
+  const tp4Dist = ATR_TP4_MULTIPLIER * atr;
 
   return {
     atr,
@@ -691,9 +699,13 @@ export function computeTradeLevels(
     stopLoss: price - direction * stopDist,
     tp1: price + direction * tp1Dist,
     tp2: price + direction * tp2Dist,
+    tp3: price + direction * tp3Dist,
+    tp4: price + direction * tp4Dist,
     riskPercent: (stopDist / price) * 100,
     tp1Percent: (tp1Dist / price) * 100,
     tp2Percent: (tp2Dist / price) * 100,
-    riskReward: tp2Dist / stopDist,
+    tp3Percent: (tp3Dist / price) * 100,
+    tp4Percent: (tp4Dist / price) * 100,
+    riskReward: tp4Dist / stopDist,
   };
 }

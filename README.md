@@ -18,9 +18,10 @@ No login. No API keys. No environment variables. Clone, run, deploy.
 
 > Dark elite dashboard: overview strip, featured instrument cards, market screener
 > with search/sort and market badges, Fear & Greed gauge, multi-pane pro chart
-> (candles + EMA/BB, volume, RSI, MACD) with crosshair OHLC legend, rule-by-rule
-> analysis with RSI/MACD divergence detection, ATR stop-loss/take-profit map,
-> backtest panel, and a 12-second auto-refresh progress bar.
+> (candles + EMA/BB, volume, RSI, MACD) with crosshair OHLC legend, five-strategy
+> consensus analysis with RSI/MACD divergence detection, ATR position map with
+> four take-profit levels, backtest panel, and a 12-second auto-refresh progress
+> bar.
 
 ---
 
@@ -32,12 +33,12 @@ No login. No API keys. No environment variables. Clone, run, deploy.
 | **Three markets, one dashboard** | **Crypto** (12 USDT pairs via Binance), **Forex** (20 majors/crosses: EURUSD, GBPUSD, USDJPY, AUDUSD, …) and **Indices** (20 global: S&P 500, Nasdaq, Dow, Nikkei, DAX, FTSE, … via Yahoo Finance). Market tabs filter the pair bar; the screener lists every instrument with a market badge. |
 | **Free data sources** | Binance public REST API with automatic fallback across `api.binance.com`, `api1–3.binance.com` and `data-api.binance.vision`; Yahoo Finance chart API (`query1/2.finance.yahoo.com`) for forex and indices. No registration or keys anywhere. |
 | **Elite signal engine** | `technicalindicators` computes RSI(14), EMA(20/50), MACD(12,26,9), Bollinger(20,2σ), Stochastic RSI(14), ADX(14) and ATR(14) server-side in Next.js Route Handlers. |
-| **5-tier signals** | Weighted voting produces **STRONG_BUY / BUY / NEUTRAL / SELL / STRONG_SELL** with a confidence percentage, a STRONG badge, and a full rule-by-rule breakdown. |
+| **5-tier signals** | Five-strategy consensus (trend, momentum, mean reversion, breakout, divergence) produces **STRONG_BUY / BUY / NEUTRAL / SELL / STRONG_SELL** with a confidence percentage, a STRONG badge, and a per-strategy consensus breakdown. |
 | **RSI divergence** | Detects bullish price-lower-low + RSI-higher-low and bearish price-higher-high + RSI-lower-high scenarios, with plain-English notes. |
 | **Pro multi-pane chart** | `lightweight-charts` v5: candles + EMA20/50 + Bollinger in the main pane, volume histogram, RSI (30/70 price lines) and MACD panes, live crosshair OHLC/RSI/MACD legend. |
 | **Market screener** | Search + sortable table across all 52 instruments (name, market badge, price, 24h %, volume, RSI, confidence). |
 | **Sentiment gauge** | Fear & Greed index from `api.alternative.me` (keyless) with an SVG gauge needle and 20-day history. |
-| **ATR position map** | 1.5× ATR stop-loss and 2.5× ATR take-profit levels for the active signal, with risk/reward ratio. |
+| **ATR position map** | 1.5× ATR stop-loss plus **four scale-out take-profit levels** (1 / 2 / 3 / 4.5× ATR, up to 1 : 3 risk/reward) for partial profit-taking. |
 | **Strategy backtester** | Replays the engine across ~200 candles to report win rates for strong-buy / buy / strong-sell / sell setups (±0.5% target, 5-candle horizon). |
 | **Shareable state** | Symbol + timeframe are synced to the URL; share a snapshot link or download candles + indicators as CSV. |
 | **PWA-ready** | Web manifest, maskable icons (192/512), theme color and apple-touch icon for install-to-homescreen. |
@@ -97,29 +98,32 @@ crunching never ships to the browser.
    right source per instrument and coalesces concurrent polls.
 2. **Compute** RSI(14), EMA(20), EMA(50), MACD(12,26,9), Bollinger(20,2σ),
    Stochastic RSI(14), ADX(14) and ATR(14) with `technicalindicators`.
-3. **Vote.** Each indicator casts a weighted vote:
+3. **Score five strategies.** Each strategy evaluates the indicators and emits
+   its own action (BUY / SELL / HOLD) with a 0–1 conviction:
 
-   | Rule | Weight | BUY when | SELL when |
-   | --- | --- | --- | --- |
-   | RSI(14) zone | 2 / 1 | ≤ 30 (oversold) or pullback in uptrend | ≥ 70 (overbought) or rally in downtrend |
-   | EMA 20 vs 50 | 1 | EMA20 > EMA50 (golden cross detected) | EMA20 < EMA50 (death cross detected) |
-   | Price vs EMA50 | 1 | price above EMA50 | price below EMA50 |
-   | MACD | 1 | MACD > signal, histogram > 0 | MACD < signal, histogram < 0 |
-   | Bollinger | 1 | below lower band / lower third | above upper band / upper third |
-   | Stochastic RSI | 1 | ≤ 0.20 (oversold) | ≥ 0.80 (overbought) |
-   | RSI divergence | 1 | bullish divergence | bearish divergence |
-   | ADX trend | 1 | ADX ≥ 25 with +DI dominant | ADX ≥ 25 with −DI dominant |
+   | Strategy | Acts on | Conviction rises when |
+   | --- | --- | --- |
+   | Trend Following (`trend`) | EMA20 vs EMA50, ADX | golden/death cross, price on the trend side, ADX ≥ 25 |
+   | MACD Momentum (`momentum`) | MACD line, signal, histogram | line above signal with positive, accelerating histogram |
+   | Mean Reversion (`mean_reversion`) | RSI, StochRSI, Bollinger | RSI ≤ 30 / ≥ 70, StochRSI ≤ 0.2 / ≥ 0.8, price outside the bands |
+   | Bollinger Breakout (`breakout`) | BB upper/lower | price breaks above / below the 2σ bands |
+   | RSI Divergence (`divergence`) | price vs RSI pivots | bullish / bearish price–RSI divergence |
 
-4. **Aggregate & tier.** `score = Σ(BUY votes) − Σ(SELL votes)`, normalized by max
-   score: `≥ +0.7` → **STRONG_BUY**, `≥ +0.5` → **BUY**, `≤ −0.7` →
-   **STRONG_SELL**, `≤ −0.5` → **SELL**, else **NEUTRAL**.
-   `confidence = |normalized score| × 100%`.
-5. **Position map.** ATR(14) derives a 1.5× ATR stop-loss and 2.5× ATR take-profit
-   with an explicit risk/reward ratio.
-6. **Backtest.** The same engine is replayed across all closed candles to report
-   win rates per action tier (a trade wins if price moves ±0.5% within 5 candles).
-7. **Return** the signal, tier, confidence, every rule's title/detail/weight, the
-   full indicator snapshot, divergence note, trade levels and backtest metrics.
+4. **Composite & tier.** Weighted conviction (trend ×2, momentum ×1.5, mean
+   reversion ×1.5, breakout ×1, divergence ×1) collapses to a score in
+   `[−1, +1]`. When **three or more strategies align** on one side with little
+   opposition → **STRONG_BUY / STRONG_SELL**; a single-sided weighted share
+   ≥ 42% → **BUY / SELL**; otherwise **NEUTRAL**.
+   `confidence = |score| × 100%`.
+5. **Position map.** Entry at the last close, stop-loss at **1.5× ATR**, and a
+   **scale-out ladder of four take-profits at 1 / 2 / 3 / 4.5× ATR** (up to
+   1 : 3 risk/reward) for partial profit-taking.
+6. **Backtest.** The same composite is replayed across all closed candles to
+   report win rates per action tier (a trade wins if price moves ±0.5% within
+   5 candles).
+7. **Return** the signal, tier, confidence, each strategy's action/conviction/
+   note, the full indicator snapshot, divergence note, trade levels and backtest
+   metrics.
 
 ---
 
@@ -135,8 +139,8 @@ Public endpoint used by the dashboard's overview, cards and screener.
 | `market` | `all`, `crypto`, `forex`, `index` | `all` | Restrict to a single market |
 
 Returns `{ interval, results: SymbolSummary[], aggregates, errors }`. Each summary
-contains `market` (price/24h stats), `signal` (action/tier/confidence/rules), an
-`indicators` snapshot, a downsampled `sparkline`, `dataSource` and `updatedAt`.
+contains `market` (price/24h stats), `signal` (action/tier/confidence/strategies),
+an `indicators` snapshot, a downsampled `sparkline`, `dataSource` and `updatedAt`.
 `aggregates` adds total quote volume, average 24h move, long/short counts and
 best/worst instruments.
 
@@ -187,7 +191,7 @@ crypto-trading-signals/
 │       ├── yahoo.ts                # Keyless Yahoo Finance fetcher + 4h rebin + stats
 │       ├── markets.ts              # Provider router (crypto → Binance, else Yahoo)
 │       ├── cache.ts                # Tiny in-process TTL cache
-│       ├── signal-engine.ts        # 8-rule weighted engine + divergence + levels
+│       ├── signal-engine.ts        # 5-strategy engine + divergence + trade levels
 │       ├── backtest.ts             # Strategy replay (win rates per action tier)
 │       ├── analysis.ts             # Summary/detail builders
 │       ├── symbols.ts              # 52-instrument catalog + market/timeframe config
@@ -225,12 +229,12 @@ Zero environment variables needed — this works immediately.
   (crypto pairs on Binance, `EURUSD=X`-style forex and `^GSPC`-style indices on
   Yahoo Finance) — the screener and aggregates pick it up automatically. Pin it
   to the featured cards with `featured: true`.
-- **Tune the engine:** edit rule weights/thresholds in `src/lib/signal-engine.ts`.
+- **Tune the engine:** edit strategy weights/thresholds in `src/lib/signal-engine.ts`.
 - **Backtest settings:** change `BACKTEST_HORIZON` / `BACKTEST_THRESHOLD_PERCENT`
   in `src/lib/backtest.ts`.
 - **Change refresh cadence:** edit `REFRESH_MS` in `src/components/Dashboard.tsx`.
 - **Add indicators:** `technicalindicators` ships many more — extend
-  `computeIndicators` and add another vote rule.
+  `computeIndicators` and a strategy in the engine.
 
 ---
 

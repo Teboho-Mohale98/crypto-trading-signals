@@ -116,16 +116,22 @@ function tradeLevelsOrEmpty(
   return levels.entry !== null &&
     levels.stopLoss !== null &&
     levels.tp1 !== null &&
-    levels.tp2 !== null
+    levels.tp2 !== null &&
+    levels.tp3 !== null &&
+    levels.tp4 !== null
     ? {
         atr: levels.atr,
         entry: levels.entry,
         stopLoss: levels.stopLoss,
         tp1: levels.tp1,
         tp2: levels.tp2,
+        tp3: levels.tp3,
+        tp4: levels.tp4,
         riskPercent: levels.riskPercent,
         tp1Percent: levels.tp1Percent,
         tp2Percent: levels.tp2Percent,
+        tp3Percent: levels.tp3Percent,
+        tp4Percent: levels.tp4Percent,
         riskReward: levels.riskReward,
       }
     : {
@@ -134,9 +140,13 @@ function tradeLevelsOrEmpty(
         stopLoss: null,
         tp1: null,
         tp2: null,
+        tp3: null,
+        tp4: null,
         riskPercent: null,
         tp1Percent: null,
         tp2Percent: null,
+        tp3Percent: null,
+        tp4Percent: null,
         riskReward: null,
       };
 }

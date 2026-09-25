@@ -104,9 +104,13 @@ export interface TradeLevels {
   stopLoss: number | null;
   tp1: number | null;
   tp2: number | null;
+  tp3: number | null;
+  tp4: number | null;
   riskPercent: number | null;
   tp1Percent: number | null;
   tp2Percent: number | null;
+  tp3Percent: number | null;
+  tp4Percent: number | null;
   riskReward: number | null;
 }
 

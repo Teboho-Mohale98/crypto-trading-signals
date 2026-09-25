@@ -1,15 +1,19 @@
 import { formatPrice } from "@/lib/format";
-import type { TradeLevels } from "@/lib/types";
+import type { TradeLevels as TradeLevelsType } from "@/lib/types";
 
-export function TradeLevels({ levels }: { levels: TradeLevels }) {
+export function TradeLevels({ levels }: { levels: TradeLevelsType }) {
   if (
     levels.entry === null ||
     levels.stopLoss === null ||
     levels.tp1 === null ||
     levels.tp2 === null ||
+    levels.tp3 === null ||
+    levels.tp4 === null ||
     levels.riskPercent === null ||
     levels.tp1Percent === null ||
     levels.tp2Percent === null ||
+    levels.tp3Percent === null ||
+    levels.tp4Percent === null ||
     levels.riskReward === null
   ) {
     return (
@@ -25,7 +29,7 @@ export function TradeLevels({ levels }: { levels: TradeLevels }) {
     );
   }
 
-  const long = levels.tp2 >= levels.stopLoss;
+  const long = levels.tp1 >= levels.stopLoss;
   const lossColor = long ? "#fb7185" : "#34d399";
   const gainColor = long ? "#34d399" : "#fb7185";
 
@@ -61,7 +65,21 @@ export function TradeLevels({ levels }: { levels: TradeLevels }) {
       value: levels.tp2,
       pct: levels.tp2Percent,
       color: gainColor,
-      hint: "2.5× ATR",
+      hint: "2× ATR",
+    },
+    {
+      label: "Take Profit 3",
+      value: levels.tp3,
+      pct: levels.tp3Percent,
+      color: gainColor,
+      hint: "3× ATR",
+    },
+    {
+      label: "Take Profit 4",
+      value: levels.tp4,
+      pct: levels.tp4Percent,
+      color: gainColor,
+      hint: "4.5× ATR",
     },
   ];
 
@@ -69,14 +87,14 @@ export function TradeLevels({ levels }: { levels: TradeLevels }) {
     <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-          Trade plan — entry · SL · TP1 · TP2
+          Trade plan — entry · SL · TP1–4
         </h3>
         <span className="text-[10px] text-slate-600">
           ATR(14) {formatPrice(levels.atr)}
         </span>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {cells.map((c) => {
           const showPct = c.pct !== 0;
           return (
@@ -106,13 +124,13 @@ export function TradeLevels({ levels }: { levels: TradeLevels }) {
 
       <div className="mt-3 flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2">
         <span className="text-[10px] uppercase tracking-wide text-slate-500">
-          Risk / reward (TP2)
+          Risk / reward (final TP)
         </span>
         <span className="text-sm font-black tabular-nums text-slate-100">
           1 : {levels.riskReward.toFixed(2)}
         </span>
         <span className="ml-auto text-[10px] text-slate-600">
-          {long ? "Long" : "Short"} · 1.5× ATR stop · 1× ATR TP1 · 2.5× ATR TP2
+          {long ? "Long" : "Short"} · scale-out 1 / 2 / 3 / 4.5× ATR targets
         </span>
       </div>
     </section>
