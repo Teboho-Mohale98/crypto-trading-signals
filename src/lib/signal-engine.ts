@@ -4,9 +4,10 @@ import type {
   Candle,
   DivergenceInfo,
   IndicatorSnapshot,
-  RuleResult,
   SignalAction,
   SignalSummary,
+  StrategyId,
+  StrategyResult,
   TradeLevels,
 } from "@/lib/types";
 
@@ -22,6 +23,39 @@ export const STOCH_RSI_PERIOD = 14;
 export const ATR_STOP_MULTIPLIER = 1.5;
 export const ATR_TP1_MULTIPLIER = 1;
 export const ATR_TP2_MULTIPLIER = 2.5;
+
+export const STRATEGY_ORDER: StrategyId[] = [
+  "trend",
+  "momentum",
+  "mean_reversion",
+  "breakout",
+  "divergence",
+];
+
+export const STRATEGY_LABELS: Record<StrategyId, string> = {
+  trend: "Trend Following",
+  momentum: "MACD Momentum",
+  mean_reversion: "Mean Reversion",
+  breakout: "Bollinger Breakout",
+  divergence: "RSI Divergence",
+};
+
+// How much each strategy contributes to the overall composite score.
+export const STRATEGY_WEIGHTS: Record<StrategyId, number> = {
+  trend: 2,
+  momentum: 1.5,
+  mean_reversion: 1.5,
+  breakout: 1,
+  divergence: 1,
+};
+
+// Composite score thresholds. STRONG requires the majority of strategies to
+// agree on one side with little opposition.
+const STRONG_SHARE = 0.55;
+const STRONG_MIN_ALIGNED = 3;
+const STANDARD_SHARE = 0.42;
+const FLAT_STRENGTH = 0.2;
+const MIN_ALIGNED_STRENGTH = 0.4;
 export const ADX_PERIOD = 14;
 export const ATR_PERIOD = 14;
 
@@ -288,304 +322,277 @@ function detectRsiDivergence(
   return { rsi: null, note: "No divergence detected between price and RSI momentum." };
 }
 
-function computeVotes(
+type StrategyDirection = "long" | "short" | "flat";
+
+function strategyRes(
+  id: StrategyId,
+  direction: StrategyDirection,
+  strength: number,
+  detail: string,
+): StrategyResult {
+  return {
+    id,
+    label: STRATEGY_LABELS[id],
+    direction,
+    action:
+      direction === "long" ? "BUY" : direction === "short" ? "SELL" : "NEUTRAL",
+    strength: Math.max(0, Math.min(1, strength)),
+    detail,
+  };
+}
+
+function clampStrength(v: number): number {
+  return Math.max(0, Math.min(1, v));
+}
+
+function evaluateStrategies(
   candles: Candle[],
   ind: ComputedIndicators,
   i: number,
   divergence: DivergenceInfo,
-): RuleResult[] {
+): StrategyResult[] {
   const s = ind.snapshots[i];
   const price = candles[i]?.c ?? null;
-  const rules: RuleResult[] = [];
 
-  const rsi = s.rsi;
-  if (rsi !== null && price !== null && s.ema20 !== null && s.ema50 !== null) {
-    const inTrendContext = s.ema20 > s.ema50;
+  // 1) Trend Following — EMA alignment, crosses and ADX confirmation.
+  const crossUp = crossedAbove(ind.ema20, ind.ema50, i);
+  const crossDn = crossedAbove(ind.ema50, ind.ema20, i);
+  const trendLong =
+    s.ema20 !== null && s.ema50 !== null && price !== null &&
+    s.ema20 > s.ema50 && price > s.ema50;
+  const trendShort =
+    s.ema20 !== null && s.ema50 !== null && price !== null &&
+    s.ema20 < s.ema50 && price < s.ema50;
+  const adxN = s.adx ?? 0;
+  let trend: StrategyResult;
+  if (crossUp) {
+    trend = strategyRes(
+      "trend",
+      "long",
+      0.9 + (adxN >= 25 ? 0.1 : 0),
+      "EMA20 just crossed above EMA50 — new uptrend",
+    );
+  } else if (crossDn) {
+    trend = strategyRes(
+      "trend",
+      "short",
+      0.9 + (adxN >= 25 ? 0.1 : 0),
+      "EMA20 just crossed below EMA50 — new downtrend",
+    );
+  } else if (trendLong) {
+    trend = strategyRes(
+      "trend",
+      "long",
+      clampStrength(0.4 + adxN / 100),
+      s.adx !== null && s.adx >= 25
+        ? "EMA uptrend with ADX confirming trend strength"
+        : "EMA uptrend, price above EMA50",
+    );
+  } else if (trendShort) {
+    trend = strategyRes(
+      "trend",
+      "short",
+      clampStrength(0.4 + adxN / 100),
+      s.adx !== null && s.adx >= 25
+        ? "EMA downtrend with ADX confirming trend strength"
+        : "EMA downtrend, price below EMA50",
+    );
+  } else {
+    trend = strategyRes(
+      "trend",
+      "flat",
+      FLAT_STRENGTH,
+      "EMAs converged or price sitting on the trend line — no trend edge",
+    );
+  }
 
-    if (rsi <= 30) {
-      rules.push({
-        indicator: "RSI",
-        vote: "BUY",
-        weight: 2,
-        title: "RSI Oversold",
-        detail: `RSI(14) is ${rsi.toFixed(1)} — below the 30 oversold threshold, indicating selling exhaustion.`,
-      });
-    } else if (rsi >= 70) {
-      rules.push({
-        indicator: "RSI",
-        vote: "SELL",
-        weight: 2,
-        title: "RSI Overbought",
-        detail: `RSI(14) is ${rsi.toFixed(1)} — above the 70 overbought threshold, indicating buying exhaustion.`,
-      });
-    } else if (inTrendContext && rsi < 50) {
-      rules.push({
-        indicator: "RSI",
-        vote: "BUY",
-        weight: 1,
-        title: "RSI Pullback in Uptrend",
-        detail: `RSI(14) is ${rsi.toFixed(1)} (< 50) while price rides an EMA uptrend — classic dip-buy territory.`,
-      });
-    } else if (!inTrendContext && rsi > 50) {
-      rules.push({
-        indicator: "RSI",
-        vote: "SELL",
-        weight: 1,
-        title: "RSI Rally in Downtrend",
-        detail: `RSI(14) is ${rsi.toFixed(1)} (> 50) while price remains below the EMA trend — bounce in a bearish trend.`,
-      });
+  // 2) MACD Momentum — line vs signal + histogram acceleration.
+  const hist = s.macdHistogram;
+  const prevHist = s.macdHistogramPrev;
+  const accelerating =
+    hist !== null && prevHist !== null && Math.abs(hist) > Math.abs(prevHist);
+  let momentum: StrategyResult;
+  if (s.macd !== null && s.macdSignal !== null && hist !== null) {
+    if (s.macd > s.macdSignal && hist > 0) {
+      momentum = strategyRes(
+        "momentum",
+        "long",
+        clampStrength(
+          0.5 +
+            (accelerating ? 0.3 : 0) +
+            (s.rsi !== null && s.rsi > 50 && s.rsi < 75 ? 0.1 : 0),
+        ),
+        accelerating ? "MACD bullish and accelerating" : "MACD above signal line",
+      );
+    } else if (s.macd < s.macdSignal && hist < 0) {
+      momentum = strategyRes(
+        "momentum",
+        "short",
+        clampStrength(
+          0.5 +
+            (accelerating ? 0.3 : 0) +
+            (s.rsi !== null && s.rsi > 25 && s.rsi < 50 ? 0.1 : 0),
+        ),
+        accelerating
+          ? "MACD bearish and accelerating"
+          : "MACD below signal line",
+      );
     } else {
-      rules.push({
-        indicator: "RSI",
-        vote: "NEUTRAL",
-        weight: 1,
-        title: "RSI In-Line With Trend",
-        detail: `RSI(14) is ${rsi.toFixed(1)} — consistent with the prevailing EMA trend.`,
-      });
+      momentum = strategyRes(
+        "momentum",
+        "flat",
+        FLAT_STRENGTH,
+        "MACD converging on its signal line — momentum indecisive",
+      );
     }
+  } else {
+    momentum = strategyRes(
+      "momentum",
+      "flat",
+      FLAT_STRENGTH,
+      "MACD not computed yet",
+    );
   }
 
-  const ema20 = s.ema20;
-  const ema50 = s.ema50;
-  const goldenCross = crossedAbove(ind.ema20, ind.ema50, i);
-  const deathCross = crossedAbove(ind.ema50, ind.ema20, i);
+  // 3) Mean Reversion — RSI / StochRSI / Bollinger extremes, counter-trend.
+  const oversold =
+    (s.rsi !== null && s.rsi <= 30) ||
+    (s.stochRsi !== null && s.stochRsi <= 0.2) ||
+    (price !== null && s.bbLower !== null && price <= s.bbLower);
+  const overbought =
+    (s.rsi !== null && s.rsi >= 70) ||
+    (s.stochRsi !== null && s.stochRsi >= 0.8) ||
+    (price !== null && s.bbUpper !== null && price >= s.bbUpper);
+  let meanRev: StrategyResult;
+  if (oversold && !overbought) {
+    const ext = clampStrength(
+      0.5 + (s.rsi !== null ? Math.max(0, (30 - s.rsi) / 30) : 0) * 0.5,
+    );
+    meanRev = strategyRes(
+      "mean_reversion",
+      "long",
+      ext,
+      s.rsi !== null && s.rsi <= 30
+        ? `RSI ${s.rsi.toFixed(1)} oversold — expecting a bounce`
+        : "Oscillators pinned at extremes — expecting mean reversion up",
+    );
+  } else if (overbought && !oversold) {
+    const ext = clampStrength(
+      0.5 + (s.rsi !== null ? Math.max(0, (s.rsi - 70) / 30) : 0) * 0.5,
+    );
+    meanRev = strategyRes(
+      "mean_reversion",
+      "short",
+      ext,
+      s.rsi !== null && s.rsi >= 70
+        ? `RSI ${s.rsi.toFixed(1)} overbought — expecting a pullback`
+        : "Oscillators pinned at extremes — expecting mean reversion down",
+    );
+  } else {
+    meanRev = strategyRes(
+      "mean_reversion",
+      "flat",
+      FLAT_STRENGTH,
+      "Oscillators mid-range — no extreme to fade",
+    );
+  }
 
-  if (ema20 !== null && ema50 !== null) {
-    if (ema20 > ema50) {
-      rules.push({
-        indicator: "EMA",
-        vote: "BUY",
-        weight: 1,
-        title: goldenCross ? "EMA Golden Cross" : "EMA Bullish Alignment",
-        detail: goldenCross
-          ? "EMA20 crossed above EMA50 within the last few candles — classic golden cross signal."
-          : `EMA20 (${ema20.toFixed(2)}) is above EMA50 (${ema50.toFixed(2)}) — short-term trend is up.`,
-      });
-    } else if (ema20 < ema50) {
-      rules.push({
-        indicator: "EMA",
-        vote: "SELL",
-        weight: 1,
-        title: deathCross ? "EMA Death Cross" : "EMA Bearish Alignment",
-        detail: deathCross
-          ? "EMA20 crossed below EMA50 within the last few candles — classic death cross signal."
-          : `EMA20 (${ema20.toFixed(2)}) is below EMA50 (${ema50.toFixed(2)}) — short-term trend is down.`,
-      });
+  // 4) Bollinger Breakout — price breaking out of the bands.
+  let breakout: StrategyResult;
+  if (
+    price !== null &&
+    s.bbUpper !== null &&
+    s.bbLower !== null &&
+    s.bbMiddle !== null
+  ) {
+    if (price > s.bbUpper) {
+      breakout = strategyRes(
+        "breakout",
+        "long",
+        0.65,
+        "Price broke above the upper Bollinger Band — upside expansion",
+      );
+    } else if (price < s.bbLower) {
+      breakout = strategyRes(
+        "breakout",
+        "short",
+        0.65,
+        "Price broke below the lower Bollinger Band — downside expansion",
+      );
     } else {
-      rules.push({
-        indicator: "EMA",
-        vote: "NEUTRAL",
-        weight: 1,
-        title: "EMA Flat",
-        detail: "EMA20 and EMA50 are effectively converged — no clear trend.",
-      });
+      breakout = strategyRes(
+        "breakout",
+        "flat",
+        FLAT_STRENGTH,
+        "Price contained inside the Bollinger Bands — no breakout",
+      );
     }
+  } else {
+    breakout = strategyRes(
+      "breakout",
+      "flat",
+      FLAT_STRENGTH,
+      "Bollinger Bands not ready",
+    );
   }
 
-  if (price !== null && ema50 !== null) {
-    const distance = ((price - ema50) / ema50) * 100;
-    if (distance > 0) {
-      rules.push({
-        indicator: "TREND",
-        vote: "BUY",
-        weight: 1,
-        title: "Price Above EMA50",
-        detail: `Price is ${distance.toFixed(2)}% above the 50-period EMA — trading in an uptrend.`,
-      });
-    } else if (distance < 0) {
-      rules.push({
-        indicator: "TREND",
-        vote: "SELL",
-        weight: 1,
-        title: "Price Below EMA50",
-        detail: `Price is ${Math.abs(distance).toFixed(2)}% below the 50-period EMA — trading in a downtrend.`,
-      });
-    }
-  }
-
-  const { macd, macdSignal, macdHistogram, macdHistogramPrev } = s;
-  if (macd !== null && macdSignal !== null && macdHistogram !== null) {
-    const accelerating =
-      macdHistogramPrev !== null &&
-      Math.abs(macdHistogram) > Math.abs(macdHistogramPrev);
-
-    if (macd > macdSignal && macdHistogram > 0) {
-      rules.push({
-        indicator: "MACD",
-        vote: "BUY",
-        weight: 1,
-        title: accelerating ? "MACD Bullish (Accelerating)" : "MACD Bullish",
-        detail: `MACD (${macd.toFixed(2)}) is above its signal line (${macdSignal.toFixed(2)}) with a positive histogram of ${macdHistogram.toFixed(2)}${
-          accelerating ? ", and momentum is accelerating." : "."
-        }`,
-      });
-    } else if (macd < macdSignal && macdHistogram < 0) {
-      rules.push({
-        indicator: "MACD",
-        vote: "SELL",
-        weight: 1,
-        title: accelerating ? "MACD Bearish (Accelerating)" : "MACD Bearish",
-        detail: `MACD (${macd.toFixed(2)}) is below its signal line (${macdSignal.toFixed(2)}) with a negative histogram of ${macdHistogram.toFixed(2)}${
-          accelerating ? ", and downside momentum is accelerating." : "."
-        }`,
-      });
-    } else {
-      rules.push({
-        indicator: "MACD",
-        vote: "NEUTRAL",
-        weight: 1,
-        title: "MACD Mixed",
-        detail: `MACD (${macd.toFixed(2)}) and its signal line (${macdSignal.toFixed(2)}) are converging — momentum is indecisive.`,
-      });
-    }
-  }
-
-  const bbUpper = s.bbUpper;
-  const bbLower = s.bbLower;
-  const bbMiddle = s.bbMiddle;
-  if (price !== null && bbUpper !== null && bbLower !== null && bbMiddle !== null) {
-    const widthPct = ((bbUpper - bbLower) / bbMiddle) * 100;
-    const bw = Number.isFinite(widthPct) ? widthPct.toFixed(2) : "—";
-    if (price > bbUpper) {
-      rules.push({
-        indicator: "BOLLINGER",
-        vote: "SELL",
-        weight: 1,
-        title: "Price Piercing Upper Band",
-        detail: `Price is above the upper Bollinger Band (${bbUpper.toFixed(2)}) — overextended resistance zone (band width ${bw}%).`,
-      });
-    } else if (price < bbLower) {
-      rules.push({
-        indicator: "BOLLINGER",
-        vote: "BUY",
-        weight: 1,
-        title: "Price Pushing Lower Band",
-        detail: `Price is below the lower Bollinger Band (${bbLower.toFixed(2)}) — capitulation into a likely bounce zone (band width ${bw}%).`,
-      });
-    } else if (bw !== "—" && Number(bw) < 4) {
-      rules.push({
-        indicator: "BOLLINGER",
-        vote: "NEUTRAL",
-        weight: 1,
-        title: "Bollinger Squeeze",
-        detail: `Band width is tight (${bw}%) — volatility contraction that usually precedes an expansion.`,
-      });
-    } else {
-      const bbPos = (price - bbLower) / (bbUpper - bbLower);
-      if (bbPos > 0.8) {
-        rules.push({
-          indicator: "BOLLINGER",
-          vote: "SELL",
-          weight: 1,
-          title: "Upper Third of Bands",
-          detail: `Price is in the upper ${(bbPos * 100).toFixed(0)}% of the Bollinger range — fading strength.`,
-        });
-      } else if (bbPos < 0.2) {
-        rules.push({
-          indicator: "BOLLINGER",
-          vote: "BUY",
-          weight: 1,
-          title: "Lower Third of Bands",
-          detail: `Price is in the lower ${(bbPos * 100).toFixed(0)}% of the Bollinger range — bargain zone.`,
-        });
-      }
-    }
-  }
-
-  const stoch = s.stochRsi;
-  if (stoch !== null && price !== null) {
-    if (stoch <= 0.2) {
-      rules.push({
-        indicator: "STOCH_RSI",
-        vote: "BUY",
-        weight: 1,
-        title: "StochRSI Oversold",
-        detail: `Stochastic RSI is ${stoch.toFixed(2)} (≤ 0.20) — momentum oscillator at extreme lows.`,
-      });
-    } else if (stoch >= 0.8) {
-      rules.push({
-        indicator: "STOCH_RSI",
-        vote: "SELL",
-        weight: 1,
-        title: "StochRSI Overbought",
-        detail: `Stochastic RSI is ${stoch.toFixed(2)} (≥ 0.80) — momentum oscillator at extreme highs.`,
-      });
-    }
-  }
-
+  // 5) RSI Divergence — exhaustion signal against recent price swings.
+  let divStrategy: StrategyResult;
   if (divergence.rsi === "bullish") {
-    rules.push({
-      indicator: "DIVERGENCE",
-      vote: "BUY",
-      weight: 1,
-      title: "Bullish RSI Divergence",
-      detail: divergence.note,
-    });
+    divStrategy = strategyRes("divergence", "long", 0.7, divergence.note);
   } else if (divergence.rsi === "bearish") {
-    rules.push({
-      indicator: "DIVERGENCE",
-      vote: "SELL",
-      weight: 1,
-      title: "Bearish RSI Divergence",
-      detail: divergence.note,
-    });
+    divStrategy = strategyRes("divergence", "short", 0.7, divergence.note);
+  } else {
+    divStrategy = strategyRes(
+      "divergence",
+      "flat",
+      FLAT_STRENGTH,
+      "No significant divergence between price and RSI",
+    );
   }
 
-  const adx = s.adx;
-  const pdi = s.pdi;
-  const mdi = s.mdi;
-  if (adx !== null && pdi !== null && mdi !== null && price !== null) {
-    if (adx >= 25 && pdi > mdi) {
-      rules.push({
-        indicator: "ADX",
-        vote: "BUY",
-        weight: 1,
-        title: "Strong Uptrend (ADX)",
-        detail: `ADX(14) is ${adx.toFixed(1)} (≥ 25) and +DI (${pdi.toFixed(1)}) dominates −DI (${mdi.toFixed(1)}) — trend is confirmed.`,
-      });
-    } else if (adx >= 25 && mdi > pdi) {
-      rules.push({
-        indicator: "ADX",
-        vote: "SELL",
-        weight: 1,
-        title: "Strong Downtrend (ADX)",
-        detail: `ADX(14) is ${adx.toFixed(1)} (≥ 25) and −DI (${mdi.toFixed(1)}) dominates +DI (${pdi.toFixed(1)}) — trend is confirmed.`,
-      });
-    } else if (adx < 20) {
-      rules.push({
-        indicator: "ADX",
-        vote: "NEUTRAL",
-        weight: 1,
-        title: "No Trend (ADX)",
-        detail: `ADX(14) is ${adx.toFixed(1)} (< 20) — market is ranging; signals should be treated with lower conviction.`,
-      });
-    }
-  }
-
-  return rules;
+  return [trend, momentum, meanRev, breakout, divStrategy];
 }
 
-function actionFromRules(rules: RuleResult[]): {
+function compositeSignal(
+  strategies: StrategyResult[],
+): {
   action: SignalAction;
   confidence: number;
   score: number;
   maxScore: number;
   tier: SignalSummary["tier"];
 } {
-  let score = 0;
-  let maxScore = 0;
-  for (const rule of rules) {
-    maxScore += rule.weight;
-    if (rule.vote === "BUY") score += rule.weight;
-    else if (rule.vote === "SELL") score -= rule.weight;
+  let longW = 0;
+  let shortW = 0;
+  let totalW = 0;
+  for (const strat of strategies) {
+    const w = STRATEGY_WEIGHTS[strat.id] * strat.strength;
+    totalW += w;
+    if (strat.action === "BUY") longW += w;
+    else if (strat.action === "SELL") shortW += w;
   }
 
-  const normalized = maxScore > 0 ? score / maxScore : 0;
+  const score = totalW > 0 ? (longW - shortW) / totalW : 0;
+  const longShare = totalW > 0 ? longW / totalW : 0;
+  const shortShare = totalW > 0 ? shortW / totalW : 0;
+  const buyAligned = strategies.filter(
+    (st) => st.action === "BUY" && st.strength >= MIN_ALIGNED_STRENGTH,
+  ).length;
+  const sellAligned = strategies.filter(
+    (st) => st.action === "SELL" && st.strength >= MIN_ALIGNED_STRENGTH,
+  ).length;
+
   let action: SignalAction = "NEUTRAL";
-  if (normalized >= 0.7) action = "STRONG_BUY";
-  else if (normalized >= 0.5) action = "BUY";
-  else if (normalized <= -0.7) action = "STRONG_SELL";
-  else if (normalized <= -0.5) action = "SELL";
+  if (buyAligned >= STRONG_MIN_ALIGNED && sellAligned <= 1 && longShare >= STRONG_SHARE) {
+    action = "STRONG_BUY";
+  } else if (sellAligned >= STRONG_MIN_ALIGNED && buyAligned <= 1 && shortShare >= STRONG_SHARE) {
+    action = "STRONG_SELL";
+  } else if (longShare >= STANDARD_SHARE && longShare > shortShare) {
+    action = "BUY";
+  } else if (shortShare >= STANDARD_SHARE && shortShare > longShare) {
+    action = "SELL";
+  }
 
   const tier: SignalSummary["tier"] =
     action === "STRONG_BUY" || action === "STRONG_SELL"
@@ -594,16 +601,13 @@ function actionFromRules(rules: RuleResult[]): {
         ? "NEUTRAL"
         : "STANDARD";
 
-  const confidence = maxScore > 0 ? Math.round(Math.abs(normalized) * 100) : 0;
-
-  return { action, confidence, score, maxScore, tier };
-}
-
-export function divisionInfoFrom(candles: Candle[], ind: ComputedIndicators): DivergenceInfo {
-  return detectRsiDivergence(
-    candles.map((c) => c.c),
-    ind.rsi,
-  );
+  return {
+    action,
+    confidence: Math.round(Math.abs(score) * 100),
+    score,
+    maxScore: 1,
+    tier,
+  };
 }
 
 export function evaluateSignal(
@@ -612,9 +616,9 @@ export function evaluateSignal(
 ): SignalSummary {
   const i = candles.length - 1;
   const divergence = divisionInfoFrom(candles, ind);
-  const rules = computeVotes(candles, ind, i, divergence);
-  const { action, confidence, score, maxScore, tier } = actionFromRules(rules);
-  return { action, confidence, score, maxScore, tier, rules };
+  const strategies = evaluateStrategies(candles, ind, i, divergence);
+  const { action, confidence, score, maxScore, tier } = compositeSignal(strategies);
+  return { action, confidence, score, maxScore, tier, strategies };
 }
 
 /**
@@ -630,9 +634,16 @@ export function signalAt(
     candles.slice(0, i + 1).map((c) => c.c),
     ind.rsi,
   );
-  const rules = computeVotes(candles, ind, i, divergence);
-  const { action, confidence, score, maxScore, tier } = actionFromRules(rules);
-  return { action, confidence, score, maxScore, tier, rules };
+  const strategies = evaluateStrategies(candles, ind, i, divergence);
+  const { action, confidence, score, maxScore, tier } = compositeSignal(strategies);
+  return { action, confidence, score, maxScore, tier, strategies };
+}
+
+export function divisionInfoFrom(candles: Candle[], ind: ComputedIndicators): DivergenceInfo {
+  return detectRsiDivergence(
+    candles.map((c) => c.c),
+    ind.rsi,
+  );
 }
 
 export function computeTradeLevels(
@@ -686,14 +697,3 @@ export function computeTradeLevels(
     riskReward: tp2Dist / stopDist,
   };
 }
-
-export const INDICATOR_META: Record<string, { periods: string; label: string }> = {
-  RSI: { periods: "14", label: "RSI" },
-  EMA: { periods: "20 / 50", label: "EMA" },
-  MACD: { periods: "12 / 26 / 9", label: "MACD" },
-  TREND: { periods: "50", label: "Trend" },
-  BOLLINGER: { periods: "20, 2σ", label: "Bollinger" },
-  STOCH_RSI: { periods: "14", label: "Stoch RSI" },
-  DIVERGENCE: { periods: "—", label: "Divergence" },
-  ADX: { periods: "14", label: "ADX" },
-};

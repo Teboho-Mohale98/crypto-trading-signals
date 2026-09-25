@@ -40,13 +40,29 @@ export interface RuleResult {
   detail: string;
 }
 
+export type StrategyId =
+  | "trend"
+  | "momentum"
+  | "mean_reversion"
+  | "breakout"
+  | "divergence";
+
+export interface StrategyResult {
+  id: StrategyId;
+  label: string;
+  direction: "long" | "short" | "flat";
+  action: SignalAction;
+  strength: number;
+  detail: string;
+}
+
 export interface SignalSummary {
   action: SignalAction;
   confidence: number;
   score: number;
   maxScore: number;
   tier: "STRONG" | "STANDARD" | "NEUTRAL";
-  rules: RuleResult[];
+  strategies: StrategyResult[];
 }
 
 export interface IndicatorSnapshot {

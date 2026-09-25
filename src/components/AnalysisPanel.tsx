@@ -2,9 +2,8 @@
 
 import { formatPrice } from "@/lib/format";
 import { getSymbolConfig } from "@/lib/symbols";
-import type { SymbolAnalysis } from "@/lib/types";
+import type { StrategyResult, SymbolAnalysis } from "@/lib/types";
 
-import { RuleList } from "@/components/RuleList";
 import { SignalBadge, TONE } from "@/components/SignalBadge";
 
 export function rsiZone(rsi: number | null): {
@@ -248,11 +247,59 @@ export function AnalysisPanel({
 
       <div>
         <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-          Rule breakdown
+          Strategy consensus
           <span className="text-slate-700">· {config.symbol} on {interval}</span>
         </p>
-        <RuleList rules={signal.rules} />
+        <div className="grid gap-2 sm:grid-cols-2">
+          {signal.strategies.map((strat) => (
+            <StrategyCard key={strat.id} strategy={strat} />
+          ))}
+        </div>
       </div>
+    </div>
+  );
+}
+
+function StrategyCard({ strategy }: { strategy: StrategyResult }) {
+  const tone =
+    strategy.action === "BUY"
+      ? {
+          text: "text-emerald-400",
+          tag: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+          card: "border-emerald-500/25",
+        }
+      : strategy.action === "SELL"
+        ? {
+            text: "text-rose-400",
+            tag: "border-rose-500/30 bg-rose-500/10 text-rose-300",
+            card: "border-rose-500/25",
+          }
+        : {
+            text: "text-slate-400",
+            tag: "border-slate-700 bg-slate-800/60 text-slate-400",
+            card: "border-slate-800",
+          };
+
+  return (
+    <div
+      className={`rounded-xl border ${tone.card} bg-slate-900/70 p-3`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-300">
+          {strategy.label}
+        </p>
+        <span
+          className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${tone.tag}`}
+        >
+          {strategy.action === "NEUTRAL" ? "HOLD" : strategy.action}
+        </span>
+      </div>
+      <p className={`mt-1 text-[11px] font-semibold ${tone.text}`}>
+        {(strategy.strength * 100).toFixed(0)}% conviction
+      </p>
+      <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+        {strategy.detail}
+      </p>
     </div>
   );
 }
