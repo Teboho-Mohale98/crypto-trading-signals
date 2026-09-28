@@ -436,7 +436,10 @@ export function Dashboard() {
         {/* Levels + backtest */}
         {analysis && !analysisError && (
           <div className="grid gap-4 lg:grid-cols-2">
-            <TradeLevels levels={analysis.tradeLevels} />
+            <TradeLevels
+              levels={analysis.tradeLevels}
+              execution={analysis.signal.execution}
+            />
             <BacktestPanel backtest={analysis.backtest} />
           </div>
         )}

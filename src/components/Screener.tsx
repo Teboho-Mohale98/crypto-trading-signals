@@ -6,6 +6,7 @@ import { formatCompact, formatPercent, formatPrice } from "@/lib/format";
 import { getSymbolConfig } from "@/lib/symbols";
 import type { Market, SymbolSummary } from "@/lib/types";
 
+import { OrderChip } from "@/components/OrderChip";
 import { SignalBadge } from "@/components/SignalBadge";
 
 type SortKey =
@@ -120,6 +121,7 @@ export function Screener({
               <th className="pb-2 pr-2 font-semibold">{th("symbol", "Pair")}</th>
               <th className="pb-2 pr-2 text-left font-semibold">Market</th>
               <th className="pb-2 pr-2 font-semibold">{th("signal", "Signal")}</th>
+              <th className="pb-2 pr-2 text-left font-semibold">Order</th>
               <th className="pb-2 pr-2 text-right font-semibold">{th("price", "Price")}</th>
               <th className="pb-2 pr-2 text-right font-semibold">{th("change24h", "24h %")}</th>
               <th className="pb-2 pr-2 text-right font-semibold">{th("volume24h", "24h Vol")}</th>
@@ -157,6 +159,9 @@ export function Screener({
                     <SignalBadge signal={r.signal.action} size="sm" />
                   </td>
                   <td className="py-2.5 pr-2">
+                    <OrderChip execution={r.signal.execution} />
+                  </td>
+                  <td className="py-2.5 pr-2">
                     <span
                       className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${
                         MARKET_BADGE[cfg.market].className
@@ -189,7 +194,7 @@ export function Screener({
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={8} className="py-6 text-center text-slate-500">
+                <td colSpan={9} className="py-6 text-center text-slate-500">
                   No pairs match “{query}”.
                 </td>
               </tr>

@@ -3,6 +3,7 @@ import { ADX, ATR, BollingerBands, EMA, MACD, RSI, StochasticRSI } from "technic
 import type {
   Candle,
   DivergenceInfo,
+  ExecutionAdvice,
   IndicatorSnapshot,
   SignalAction,
   SignalSummary,
@@ -10,6 +11,8 @@ import type {
   StrategyResult,
   TradeLevels,
 } from "@/lib/types";
+
+import { formatPrice } from "@/lib/format";
 
 export const RSI_PERIOD = 14;
 export const EMA_FAST_PERIOD = 20;
@@ -58,6 +61,9 @@ const STRONG_MIN_ALIGNED = 3;
 const STANDARD_SHARE = 0.42;
 const FLAT_STRENGTH = 0.2;
 const MIN_ALIGNED_STRENGTH = 0.4;
+
+// How far below / above the last price a passive order should sit.
+const EXECUTION_EDGE_MULTIPLIER = 0.25;
 export const ADX_PERIOD = 14;
 export const ATR_PERIOD = 14;
 
@@ -612,6 +618,125 @@ function compositeSignal(
   };
 }
 
+/**
+ * Recommend an order type for the active setup so traders know whether to hit
+ * the market, queue a limit or wait for a stop/breakout trigger.
+ */
+function executionAdvice(
+  strategies: StrategyResult[],
+  action: SignalAction,
+  price: number | null,
+  atr: number | null,
+): ExecutionAdvice {
+  if (price === null || price <= 0 || atr === null || !Number.isFinite(atr) || atr <= 0) {
+    return {
+      orderType: null,
+      triggerPrice: null,
+      limitPrice: null,
+      reason: "No actionable setup — wait for a clear BUY / SELL signal.",
+    };
+  }
+
+  const long = action.includes("BUY");
+  const short = action.includes("SELL");
+  if (!long && !short) {
+    return {
+      orderType: null,
+      triggerPrice: null,
+      limitPrice: null,
+      reason: "No actionable setup — wait for a clear BUY / SELL signal.",
+    };
+  }
+
+  const byId = new Map(strategies.map((s) => [s.id, s]));
+  const trend = byId.get("trend");
+  const momentum = byId.get("momentum");
+  const meanRev = byId.get("mean_reversion");
+  const breakout = byId.get("breakout");
+  const divergence = byId.get("divergence");
+
+  const nearLong = (st?: StrategyResult) =>
+    st !== undefined && st.action === "BUY" && st.strength >= MIN_ALIGNED_STRENGTH;
+  const nearShort = (st?: StrategyResult) =>
+    st !== undefined && st.action === "SELL" && st.strength >= MIN_ALIGNED_STRENGTH;
+
+  const edge = EXECUTION_EDGE_MULTIPLIER * atr;
+
+  if (long) {
+    const secondary = nearLong(trend) || nearLong(momentum);
+    if (nearLong(meanRev) || (nearLong(divergence) && !secondary)) {
+      const limit = price - edge;
+      return {
+        orderType: "BUY_LIMIT",
+        triggerPrice: null,
+        limitPrice: limit,
+        reason: `Oscillators are stretched — queue a BUY LIMIT at ${formatPrice(limit)} and get filled on the dip instead of chasing the market.`,
+      };
+    }
+    if (nearLong(breakout)) {
+      if (secondary) {
+        const trigger = price + edge;
+        const limit = trigger + edge;
+        return {
+          orderType: "BUY_STOP_LIMIT",
+          triggerPrice: trigger,
+          limitPrice: limit,
+          reason: `Breakout plus trend/momentum support — place a BUY STOP LIMIT triggered at ${formatPrice(trigger)} with a cap at ${formatPrice(limit)} so an upside break is confirmed without chasing a spike.`,
+        };
+      }
+      const trigger = price + edge;
+      return {
+        orderType: "BUY_STOP",
+        triggerPrice: trigger,
+        limitPrice: null,
+        reason: `Price is pressing the upper band — a BUY STOP at ${formatPrice(trigger)} only joins once the breakout confirms.`,
+      };
+    }
+    return {
+      orderType: "MARKET",
+      triggerPrice: price,
+      limitPrice: null,
+      reason: "Trend and momentum are aligned — execute a MARKET BUY now to capture the move.",
+    };
+  }
+
+  const secondary = nearShort(trend) || nearShort(momentum);
+  if (nearShort(meanRev) || (nearShort(divergence) && !secondary)) {
+    const limit = price + edge;
+    return {
+      orderType: "SELL_LIMIT",
+      triggerPrice: null,
+      limitPrice: limit,
+      reason: `Oscillators are stretched — queue a SELL LIMIT at ${formatPrice(limit)} and short into strength instead of chasing the market.`,
+    };
+  }
+  if (nearShort(breakout)) {
+    if (secondary) {
+      const trigger = price - edge;
+      const limit = trigger - edge;
+      return {
+        orderType: "SELL_STOP_LIMIT",
+        triggerPrice: trigger,
+        limitPrice: limit,
+        reason: `Breakdown plus trend/momentum support — place a SELL STOP LIMIT triggered at ${formatPrice(trigger)} with a cap at ${formatPrice(limit)} so a downside break is confirmed without chasing the dump.`,
+      };
+    }
+    const trigger = price - edge;
+    return {
+      orderType: "SELL_STOP",
+      triggerPrice: trigger,
+      limitPrice: null,
+      reason: `Price is pressing the lower band — a SELL STOP at ${formatPrice(trigger)} only joins once the breakdown confirms.`,
+    };
+  }
+  return {
+    orderType: "MARKET",
+    triggerPrice: price,
+    limitPrice: null,
+    reason: "Trend and momentum are aligned — execute a MARKET SELL now to capture the move.",
+  };
+}
+
 export function evaluateSignal(
   candles: Candle[],
   ind: ComputedIndicators,
@@ -620,7 +745,8 @@ export function evaluateSignal(
   const divergence = divisionInfoFrom(candles, ind);
   const strategies = evaluateStrategies(candles, ind, i, divergence);
   const { action, confidence, score, maxScore, tier } = compositeSignal(strategies);
-  return { action, confidence, score, maxScore, tier, strategies };
+  const execution = executionAdvice(strategies, action, candles[i]?.c ?? null, lastValid(ind.atr));
+  return { action, confidence, score, maxScore, tier, strategies, execution };
 }
 
 /**
@@ -638,7 +764,8 @@ export function signalAt(
   );
   const strategies = evaluateStrategies(candles, ind, i, divergence);
   const { action, confidence, score, maxScore, tier } = compositeSignal(strategies);
-  return { action, confidence, score, maxScore, tier, strategies };
+  const execution = executionAdvice(strategies, action, candles[i]?.c ?? null, lastValid(ind.atr));
+  return { action, confidence, score, maxScore, tier, strategies, execution };
 }
 
 export function divisionInfoFrom(candles: Candle[], ind: ComputedIndicators): DivergenceInfo {

@@ -56,6 +56,22 @@ export interface StrategyResult {
   detail: string;
 }
 
+export type OrderType =
+  | "MARKET"
+  | "BUY_LIMIT"
+  | "SELL_LIMIT"
+  | "BUY_STOP"
+  | "SELL_STOP"
+  | "BUY_STOP_LIMIT"
+  | "SELL_STOP_LIMIT";
+
+export interface ExecutionAdvice {
+  orderType: OrderType | null;
+  triggerPrice: number | null;
+  limitPrice: number | null;
+  reason: string;
+}
+
 export interface SignalSummary {
   action: SignalAction;
   confidence: number;
@@ -63,6 +79,7 @@ export interface SignalSummary {
   maxScore: number;
   tier: "STRONG" | "STANDARD" | "NEUTRAL";
   strategies: StrategyResult[];
+  execution: ExecutionAdvice;
 }
 
 export interface IndicatorSnapshot {
