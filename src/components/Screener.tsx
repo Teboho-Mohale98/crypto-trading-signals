@@ -6,7 +6,7 @@ import { formatCompact, formatPercent, formatPrice } from "@/lib/format";
 import { getSymbolConfig } from "@/lib/symbols";
 import type { Market, SymbolSummary } from "@/lib/types";
 
-import { OrderChip } from "@/components/OrderChip";
+import { OrderChip, ExecutionPrices } from "@/components/OrderChip";
 import { SignalBadge } from "@/components/SignalBadge";
 
 type SortKey =
@@ -159,7 +159,10 @@ export function Screener({
                     <SignalBadge signal={r.signal.action} size="sm" />
                   </td>
                   <td className="py-2.5 pr-2">
-                    <OrderChip execution={r.signal.execution} />
+                    <div className="flex flex-col items-start gap-0.5">
+                      <OrderChip execution={r.signal.execution} />
+                      <ExecutionPrices execution={r.signal.execution} />
+                    </div>
                   </td>
                   <td className="py-2.5 pr-2">
                     <span

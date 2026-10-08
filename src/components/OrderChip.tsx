@@ -1,3 +1,4 @@
+import { formatPrice } from "@/lib/format";
 import type { ExecutionAdvice, OrderType } from "@/lib/types";
 
 const ORDER_LABEL: Record<OrderType, string> = {
@@ -48,6 +49,31 @@ export function OrderChip({
       title={execution.reason}
     >
       {ORDER_LABEL[orderType]}
+    </span>
+  );
+}
+
+/**
+ * The concrete price legs of an order advice:
+ * - Stop / Stop-Limit → "Stop <price>"
+ * - Limit / Stop-Limit → "Limit <price>"
+ * Market orders carry no leg prices.
+ */
+export function ExecutionPrices({ execution }: { execution: ExecutionAdvice }) {
+  const t = execution.orderType;
+  if (!t) return null;
+
+  const stop = t.includes("STOP") ? execution.stopPrice : null;
+  const limit = t.includes("LIMIT") ? execution.limitPrice : null;
+  if (stop === null && limit === null) return null;
+
+  const parts: string[] = [];
+  if (stop !== null) parts.push(`Stop ${formatPrice(stop)}`);
+  if (limit !== null) parts.push(`Limit ${formatPrice(limit)}`);
+
+  return (
+    <span className="whitespace-nowrap text-[10px] font-semibold tabular-nums text-slate-400">
+      {parts.join(" · ")}
     </span>
   );
 }

@@ -39,7 +39,7 @@ No login. No API keys. No environment variables. Clone, run, deploy.
 | **Market screener** | Search + sortable table across all 52 instruments (name, market badge, price, 24h %, volume, RSI, confidence). |
 | **Sentiment gauge** | Fear & Greed index from `api.alternative.me` (keyless) with an SVG gauge needle and 20-day history. |
 | **ATR position map** | 1.5× ATR stop-loss plus **four scale-out take-profit levels** (1 / 2 / 3 / 4.5× ATR, up to 1 : 3 risk/reward) for partial profit-taking. |
-| **Order-type advice** | Each active setup recommends the execution route — **Market**, **Buy/Sell Limit**, **Buy/Sell Stop** or **Buy/Sell Stop Limit** — with concrete trigger/limit prices and a plain-English reason (chase vs fade vs breakout confirmation). |
+| **Order-type advice** | Each active setup recommends the execution route — **Market**, **Buy/Sell Limit**, **Buy/Sell Stop** or **Buy/Sell Stop Limit** — with concrete **stop (trigger)** and **limit** prices and a plain-English reason (chase vs fade vs breakout confirmation). |
 | **Strategy backtester** | Replays the engine across ~200 candles to report win rates for strong-buy / buy / strong-sell / sell setups (±0.5% target, 5-candle horizon). |
 | **Shareable state** | Symbol + timeframe are synced to the URL; share a snapshot link or download candles + indicators as CSV. |
 | **PWA-ready** | Web manifest, maskable icons (192/512), theme color and apple-touch icon for install-to-homescreen. |
@@ -123,7 +123,8 @@ crunching never ships to the browser.
    setup: mean-reversion / divergence fades get a **Limit** order (buy the dip /
    short the rally), price pressing a band gets a **Stop** or **Stop-Limit**
    (join once the breakout confirms, with a slippage cap), and trend + momentum
-   aligned setups get a **Market** execution — each with trigger/limit prices.
+   aligned setups get a **Market** execution — each with concrete stop (trigger) and limit
+   prices.
 7. **Backtest.** The same composite is replayed across all closed candles to
    report win rates per action tier (a trade wins if price moves ±0.5% within
    5 candles).

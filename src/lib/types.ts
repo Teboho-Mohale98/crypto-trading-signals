@@ -67,7 +67,7 @@ export type OrderType =
 
 export interface ExecutionAdvice {
   orderType: OrderType | null;
-  triggerPrice: number | null;
+  stopPrice: number | null;
   limitPrice: number | null;
   reason: string;
 }

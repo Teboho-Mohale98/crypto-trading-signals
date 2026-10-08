@@ -1,7 +1,7 @@
 import { formatPrice } from "@/lib/format";
 import type { ExecutionAdvice, TradeLevels as TradeLevelsType } from "@/lib/types";
 
-import { OrderChip } from "@/components/OrderChip";
+import { ExecutionPrices, OrderChip } from "@/components/OrderChip";
 
 export function TradeLevels({
   levels,
@@ -104,18 +104,9 @@ export function TradeLevels({
 
       {execution && execution.orderType && (
         <div className="mt-3 flex flex-col gap-2 rounded-xl border border-slate-700 bg-slate-950/60 p-3 sm:flex-row sm:items-center">
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <OrderChip execution={execution} size="md" />
-            {execution.triggerPrice !== null && (
-              <span className="text-[11px] tabular-nums text-slate-400">
-                Trigger <span className="font-semibold text-slate-200">{formatPrice(execution.triggerPrice)}</span>
-              </span>
-            )}
-            {execution.limitPrice !== null && (
-              <span className="text-[11px] tabular-nums text-slate-400">
-                Limit <span className="font-semibold text-slate-200">{formatPrice(execution.limitPrice)}</span>
-              </span>
-            )}
+            <ExecutionPrices execution={execution} />
           </div>
           <p className="text-[11px] leading-relaxed text-slate-400 sm:ml-2">
             {execution.reason}

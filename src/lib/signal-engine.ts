@@ -631,7 +631,7 @@ function executionAdvice(
   if (price === null || price <= 0 || atr === null || !Number.isFinite(atr) || atr <= 0) {
     return {
       orderType: null,
-      triggerPrice: null,
+      stopPrice: null,
       limitPrice: null,
       reason: "No actionable setup — wait for a clear BUY / SELL signal.",
     };
@@ -642,7 +642,7 @@ function executionAdvice(
   if (!long && !short) {
     return {
       orderType: null,
-      triggerPrice: null,
+      stopPrice: null,
       limitPrice: null,
       reason: "No actionable setup — wait for a clear BUY / SELL signal.",
     };
@@ -668,7 +668,7 @@ function executionAdvice(
       const limit = price - edge;
       return {
         orderType: "BUY_LIMIT",
-        triggerPrice: null,
+        stopPrice: null,
         limitPrice: limit,
         reason: `Oscillators are stretched — queue a BUY LIMIT at ${formatPrice(limit)} and get filled on the dip instead of chasing the market.`,
       };
@@ -679,7 +679,7 @@ function executionAdvice(
         const limit = trigger + edge;
         return {
           orderType: "BUY_STOP_LIMIT",
-          triggerPrice: trigger,
+          stopPrice: trigger,
           limitPrice: limit,
           reason: `Breakout plus trend/momentum support — place a BUY STOP LIMIT triggered at ${formatPrice(trigger)} with a cap at ${formatPrice(limit)} so an upside break is confirmed without chasing a spike.`,
         };
@@ -687,14 +687,14 @@ function executionAdvice(
       const trigger = price + edge;
       return {
         orderType: "BUY_STOP",
-        triggerPrice: trigger,
+        stopPrice: trigger,
         limitPrice: null,
         reason: `Price is pressing the upper band — a BUY STOP at ${formatPrice(trigger)} only joins once the breakout confirms.`,
       };
     }
     return {
       orderType: "MARKET",
-      triggerPrice: price,
+      stopPrice: null,
       limitPrice: null,
       reason: "Trend and momentum are aligned — execute a MARKET BUY now to capture the move.",
     };
@@ -705,7 +705,7 @@ function executionAdvice(
     const limit = price + edge;
     return {
       orderType: "SELL_LIMIT",
-      triggerPrice: null,
+      stopPrice: null,
       limitPrice: limit,
       reason: `Oscillators are stretched — queue a SELL LIMIT at ${formatPrice(limit)} and short into strength instead of chasing the market.`,
     };
@@ -716,7 +716,7 @@ function executionAdvice(
       const limit = trigger - edge;
       return {
         orderType: "SELL_STOP_LIMIT",
-        triggerPrice: trigger,
+        stopPrice: trigger,
         limitPrice: limit,
         reason: `Breakdown plus trend/momentum support — place a SELL STOP LIMIT triggered at ${formatPrice(trigger)} with a cap at ${formatPrice(limit)} so a downside break is confirmed without chasing the dump.`,
       };
@@ -724,14 +724,14 @@ function executionAdvice(
     const trigger = price - edge;
     return {
       orderType: "SELL_STOP",
-      triggerPrice: trigger,
+      stopPrice: trigger,
       limitPrice: null,
       reason: `Price is pressing the lower band — a SELL STOP at ${formatPrice(trigger)} only joins once the breakdown confirms.`,
     };
   }
   return {
     orderType: "MARKET",
-    triggerPrice: price,
+    stopPrice: null,
     limitPrice: null,
     reason: "Trend and momentum are aligned — execute a MARKET SELL now to capture the move.",
   };
