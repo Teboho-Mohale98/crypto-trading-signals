@@ -1,5 +1,7 @@
 # SignalDesk — Elite Crypto, Forex & Index Trading Signals
 
+![SignalDesk — live crypto, forex and index trading signals dashboard](screenshots/preview.png)
+
 A heavyweight, 100% public, open-source trading signal web application built with
 **Next.js (App Router)**, **Tailwind CSS**, and **TypeScript**.
 
