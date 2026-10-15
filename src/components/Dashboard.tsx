@@ -11,6 +11,7 @@ import { AnalysisPanel } from "@/components/AnalysisPanel";
 import { BacktestPanel } from "@/components/BacktestPanel";
 import { Header } from "@/components/Header";
 import { OverviewStrip } from "@/components/OverviewStrip";
+import { ProjectionPanel } from "@/components/ProjectionPanel";
 import { ProChart } from "@/components/ProChart";
 import { Screener } from "@/components/Screener";
 import { SentimentGauge } from "@/components/SentimentGauge";
@@ -444,6 +445,11 @@ export function Dashboard() {
           </div>
         )}
 
+        {/* Hypothetical capital projection */}
+        {analysis && !analysisError && (
+          <ProjectionPanel analysis={analysis} interval={interval} />
+        )}
+
         {data?.errors && data.errors.length > 0 && (
           <div className="text-xs text-slate-600">
             {data.errors.map((e) => (
@@ -459,8 +465,10 @@ export function Dashboard() {
           (forex & indices, no key). Indicators: RSI(14), EMA(20/50),
           MACD(12,26,9), Bollinger(20,2σ), StochRSI(14), ADX(14), ATR(14) via{" "}
           <code>technicalindicators</code>, chart rendering via{" "}
-          <code>lightweight-charts</code>. Signals & backtest are algorithmic and
-          informational only — not financial advice.
+          <code>lightweight-charts</code>. Signals, projections &amp; backtests are
+          algorithmic and informational only — not financial advice. All trading
+          involves substantial risk of loss; no outcome is guaranteed and you can
+          lose your entire capital.
         </p>
       </main>
     </div>

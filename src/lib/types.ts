@@ -137,6 +137,8 @@ export interface BacktestMetrics {
   total: number;
   winRate: number;
   avgMovePercent: number;
+  avgWinMovePercent: number;
+  avgLossMovePercent: number;
 }
 
 export interface BacktestResult {
@@ -147,6 +149,7 @@ export interface BacktestResult {
   horizonCandles: number;
   thresholdPercent: number;
   candlesCount: number;
+  evaluatedCandles: number;
 }
 
 export interface AnalysisSeries {

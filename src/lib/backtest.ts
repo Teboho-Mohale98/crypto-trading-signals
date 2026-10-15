@@ -5,10 +5,18 @@ import { signalAt, type ComputedIndicators } from "@/lib/signal-engine";
 export const BACKTEST_HORIZON = 5;
 export const BACKTEST_THRESHOLD_PERCENT = 0.5;
 
-const MIN_INDEX = 70;
+export const MIN_INDEX = 70;
 
 function emptyMetrics(): BacktestMetrics {
-  return { wins: 0, losses: 0, total: 0, winRate: 0, avgMovePercent: 0 };
+  return {
+    wins: 0,
+    losses: 0,
+    total: 0,
+    winRate: 0,
+    avgMovePercent: 0,
+    avgWinMovePercent: 0,
+    avgLossMovePercent: 0,
+  };
 }
 
 /**
@@ -28,6 +36,13 @@ export function runBacktest(
     strongSell: emptyMetrics(),
   };
 
+  const moveSums = {
+    buy: { win: 0, loss: 0 },
+    sell: { win: 0, loss: 0 },
+    strongBuy: { win: 0, loss: 0 },
+    strongSell: { win: 0, loss: 0 },
+  };
+
   const n = candles.length;
   const closes = candles.map((c) => c.c);
 
@@ -36,19 +51,20 @@ export function runBacktest(
     if (!Number.isFinite(entry) || entry <= 0) continue;
 
     const { action } = signalAt(candles, ind, i);
-    const bucket =
+    const key =
       action === "STRONG_BUY"
-        ? metrics.strongBuy
+        ? "strongBuy"
         : action === "BUY"
-          ? metrics.buy
+          ? "buy"
           : action === "STRONG_SELL"
-            ? metrics.strongSell
+            ? "strongSell"
             : action === "SELL"
-              ? metrics.sell
+              ? "sell"
               : null;
 
-    if (!bucket) continue;
+    if (!key) continue;
 
+    const bucket = metrics[key];
     const direction = action.includes("BUY") ? 1 : -1;
     const exit = closes[i + BACKTEST_HORIZON];
     if (!Number.isFinite(exit)) continue;
@@ -56,8 +72,10 @@ export function runBacktest(
     const movePercent = ((exit - entry) / entry) * 100 * direction;
     if (movePercent >= BACKTEST_THRESHOLD_PERCENT) {
       bucket.wins += 1;
+      moveSums[key].win += movePercent;
     } else if (movePercent <= -BACKTEST_THRESHOLD_PERCENT) {
       bucket.losses += 1;
+      moveSums[key].loss += movePercent;
     }
 
     bucket.total += 1;
@@ -73,6 +91,8 @@ export function runBacktest(
     const m = metrics[key];
     m.winRate = m.total > 0 ? (m.wins / m.total) * 100 : 0;
     m.avgMovePercent = m.total > 0 ? m.avgMovePercent / m.total : 0;
+    m.avgWinMovePercent = m.wins > 0 ? moveSums[key].win / m.wins : 0;
+    m.avgLossMovePercent = m.losses > 0 ? moveSums[key].loss / m.losses : 0;
   }
 
   return {
@@ -83,5 +103,6 @@ export function runBacktest(
     horizonCandles: BACKTEST_HORIZON,
     thresholdPercent: BACKTEST_THRESHOLD_PERCENT,
     candlesCount: n,
+    evaluatedCandles: Math.max(0, n - BACKTEST_HORIZON - MIN_INDEX),
   };
 }
